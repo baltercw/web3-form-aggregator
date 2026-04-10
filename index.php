@@ -1,9 +1,14 @@
 <?php
 session_start();
 require_once './db.php';
+require_once __DIR__ . '/includes/task_helpers.php';
 
 $tasks = [];
-$taskQuery = $conn->query('SELECT id, title, summary, description, reward_xp, category, created_at FROM tasks ORDER BY created_at DESC');
+$taskQuery = $conn->query(
+    "SELECT t.id, t.title, t.summary, t.description, t.cover_image_url, t.reward_xp, t.category, t.created_at, t.task_status, t.starts_at, t.ends_at, t.max_completions, "
+    . "(SELECT COUNT(*) FROM submissions s WHERE s.task_id = t.id AND s.status = 'approved') AS approved_count "
+    . 'FROM tasks t ORDER BY t.created_at DESC'
+);
 if ($taskQuery) {
     while ($row = $taskQuery->fetch_assoc()) {
         $tasks[] = $row;
@@ -134,18 +139,53 @@ function taskPublicTeaser(array $task): string
             <?php else: ?>
                 <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                     <?php foreach ($tasks as $task): ?>
-                        <article class="group flex h-full flex-col rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-[0_15px_40px_-30px_rgba(0,0,0,0.9)] transition hover:-translate-y-0.5 hover:border-amber-300/45 hover:bg-white/[0.065]">
-                            <div class="flex items-center justify-between gap-3">
+                        <?php
+                        $ac = (int) ($task['approved_count'] ?? 0);
+                        $gate = task_submission_gate($task, $ac);
+                        $maxC = $task['max_completions'] ?? null;
+                        if ($maxC !== null && $maxC !== '' && (int) $maxC > 0) {
+                            $quotaPublic = '名額（已核准）' . $ac . ' / ' . (int) $maxC . ' · 剩 ' . max(0, (int) $maxC - $ac);
+                        } else {
+                            $quotaPublic = '名額不限（已核准 ' . $ac . '）';
+                        }
+                        $coverUrl = trim((string) ($task['cover_image_url'] ?? ''));
+                        $showCover = $coverUrl !== '' && preg_match('/^https:\/\//i', $coverUrl);
+                        ?>
+                        <article class="group flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] shadow-[0_15px_40px_-30px_rgba(0,0,0,0.9)] transition hover:-translate-y-0.5 hover:border-amber-300/45 hover:bg-white/[0.065]">
+                            <?php if ($showCover): ?>
+                                <div class="relative aspect-[21/9] w-full shrink-0 overflow-hidden bg-zinc-900/80">
+                                    <img src="<?php echo htmlspecialchars($coverUrl); ?>" alt="" class="h-full w-full object-cover opacity-95 transition group-hover:opacity-100" loading="lazy" decoding="async" referrerpolicy="no-referrer">
+                                </div>
+                            <?php endif; ?>
+                            <div class="flex flex-1 flex-col p-6">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
                                 <p class="rounded-full border border-amber-300/35 bg-amber-300/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-amber-200">
                                     <?php echo htmlspecialchars($task['category']); ?>
                                 </p>
-                                <p class="text-xs text-zinc-500">
-                                    <?php echo htmlspecialchars(formatTaskDate($task['created_at'])); ?>
-                                </p>
+                                <div class="flex flex-wrap items-center justify-end gap-1.5">
+                                    <?php if (($task['task_status'] ?? '') === 'ended'): ?>
+                                        <span class="rounded-full border border-zinc-500/50 bg-zinc-900/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-200">已結束</span>
+                                    <?php endif; ?>
+                                    <?php if (!$gate['can_submit']): ?>
+                                        <span class="rounded-full border-2 border-rose-500/70 bg-rose-950/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-100">不可提交</span>
+                                    <?php else: ?>
+                                        <span class="rounded-full border border-emerald-400/45 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-100">開放提交</span>
+                                    <?php endif; ?>
+                                    <p class="text-xs text-zinc-500"><?php echo htmlspecialchars(formatTaskDate($task['created_at'])); ?></p>
+                                </div>
                             </div>
                             <h3 class="mt-5 text-xl font-semibold leading-snug tracking-tight text-white">
                                 <?php echo htmlspecialchars($task['title']); ?>
                             </h3>
+                            <p class="mt-2 text-[11px] leading-relaxed text-zinc-500">
+                                台灣時間 <?php echo htmlspecialchars(task_format_taipei_display($task['starts_at'] ?? '')); ?> ～ <?php echo htmlspecialchars(task_format_taipei_display($task['ends_at'] ?? '')); ?>
+                            </p>
+                            <p class="mt-1 text-xs font-medium text-amber-200/85"><?php echo htmlspecialchars($quotaPublic); ?></p>
+                            <?php if (!$gate['can_submit'] && !empty($gate['block_labels'])): ?>
+                                <div class="mt-3 rounded-xl border-2 border-rose-500/55 bg-rose-950/55 px-3 py-2 text-xs font-semibold leading-snug text-rose-50">
+                                    <?php echo htmlspecialchars(implode('；', $gate['block_labels'])); ?>
+                                </div>
+                            <?php endif; ?>
                             <?php if ($isLoggedIn): ?>
                                 <p class="mt-3 flex-1 text-sm leading-relaxed text-zinc-300">
                                     <?php echo nl2br(htmlspecialchars($task['description'])); ?>
@@ -159,6 +199,7 @@ function taskPublicTeaser(array $task): string
                             <div class="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
                                 <span class="text-xs uppercase tracking-[0.12em] text-zinc-500">Reward</span>
                                 <span class="text-base font-semibold text-amber-200">+<?php echo (int) $task['reward_xp']; ?> XP</span>
+                            </div>
                             </div>
                         </article>
                     <?php endforeach; ?>

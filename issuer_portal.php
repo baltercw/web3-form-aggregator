@@ -1,6 +1,8 @@
 <?php
 session_start();
 require_once './db.php';
+require_once __DIR__ . '/includes/task_helpers.php';
+require_once __DIR__ . '/includes/form_schema_helpers.php';
 
 if (!isset($_SESSION['user_id'], $_SESSION['role']) || $_SESSION['role'] !== 'issuer') {
     header('Location: ./login.php');
@@ -17,6 +19,7 @@ function issuerBuildFormSchemaFromPost(): string
     $keys = $_POST['field_key'] ?? [];
     $labels = $_POST['field_label'] ?? [];
     $types = $_POST['field_type'] ?? [];
+    $requiredFlags = $_POST['field_required'] ?? [];
     if (!is_array($keys)) {
         $keys = [];
     }
@@ -26,8 +29,11 @@ function issuerBuildFormSchemaFromPost(): string
     if (!is_array($types)) {
         $types = [];
     }
+    if (!is_array($requiredFlags)) {
+        $requiredFlags = [];
+    }
     $out = [];
-    $n = max(count($keys), count($labels), count($types));
+    $n = max(count($keys), count($labels), count($types), count($requiredFlags));
     for ($i = 0; $i < $n; $i++) {
         $key = isset($keys[$i]) ? trim((string) $keys[$i]) : '';
         $key = preg_replace('/[^a-zA-Z0-9_]/', '_', $key);
@@ -41,10 +47,12 @@ function issuerBuildFormSchemaFromPost(): string
             $label = $key;
         }
         $type = isset($types[$i]) ? trim((string) $types[$i]) : 'text';
-        if ($type !== 'url') {
+        $allowed = ['text', 'url', 'textarea', 'email', 'checkbox'];
+        if (!in_array($type, $allowed, true)) {
             $type = 'text';
         }
-        $out[] = ['key' => $key, 'label' => $label, 'type' => $type];
+        $req = isset($requiredFlags[$i]) && (string) $requiredFlags[$i] === '1';
+        $out[] = ['key' => $key, 'label' => $label, 'type' => $type, 'required' => $req];
     }
 
     return json_encode($out, JSON_UNESCAPED_UNICODE);
@@ -59,19 +67,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $description = trim($_POST['description'] ?? '');
         $rewardXp = (int) ($_POST['reward_xp'] ?? 0);
         $category = trim($_POST['category'] ?? '');
+        $taskStatus = (($_POST['task_status'] ?? '') === 'ended') ? 'ended' : 'published';
+        $startsAt = task_parse_datetime_local_input((string) ($_POST['starts_at'] ?? ''));
+        $endsAt = task_parse_datetime_local_input((string) ($_POST['ends_at'] ?? ''));
+        $maxRaw = trim((string) ($_POST['max_completions'] ?? ''));
+        $maxCompletions = ($maxRaw === '') ? null : max(1, (int) $maxRaw);
+        $coverUrl = trim((string) ($_POST['cover_image_url'] ?? ''));
+        $coverBind = $coverUrl === '' ? null : $coverUrl;
         $schemaJson = issuerBuildFormSchemaFromPost();
 
-        if ($title === '' || $summary === '' || $description === '' || $category === '' || $rewardXp < 0) {
+        if ($coverUrl !== '' && !filter_var($coverUrl, FILTER_VALIDATE_URL)) {
+            $error = '封面圖網址格式不正確（請使用 http/https 完整網址）。';
+        } elseif ($title === '' || $summary === '' || $description === '' || $category === '' || $rewardXp < 0) {
             $error = '請填寫完整任務資訊（含公開摘要）。';
+        } elseif ($startsAt === null || $endsAt === null) {
+            $error = '請填寫開始與截止時間（台灣時間）。';
         } else {
-            $stmt = $conn->prepare('INSERT INTO tasks (title, summary, description, reward_xp, category, form_schema, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            $stmt->bind_param('ssisssi', $title, $summary, $description, $rewardXp, $category, $schemaJson, $userId);
-            if ($stmt->execute()) {
-                $message = '任務已發布。';
+            $dStart = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $startsAt, task_taipei_tz());
+            $dEnd = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $endsAt, task_taipei_tz());
+            if ($dEnd <= $dStart) {
+                $error = '截止時間必須晚於開始時間。';
             } else {
-                $error = '發布失敗，請稍後再試。';
+                if ($maxCompletions === null) {
+                    $stmt = $conn->prepare('INSERT INTO tasks (title, summary, description, cover_image_url, reward_xp, category, task_status, starts_at, ends_at, max_completions, form_schema, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)');
+                    $stmt->bind_param('ssssisssssi', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $schemaJson, $userId);
+                } else {
+                    $stmt = $conn->prepare('INSERT INTO tasks (title, summary, description, cover_image_url, reward_xp, category, task_status, starts_at, ends_at, max_completions, form_schema, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                    $stmt->bind_param('ssssisssssisi', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $maxCompletions, $schemaJson, $userId);
+                }
+                if ($stmt->execute()) {
+                    $message = '任務已發布。';
+                } else {
+                    $error = '發布失敗，請稍後再試。';
+                }
+                $stmt->close();
             }
-            $stmt->close();
         }
     }
 
@@ -82,32 +112,114 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $description = trim($_POST['description'] ?? '');
         $rewardXp = (int) ($_POST['reward_xp'] ?? 0);
         $category = trim($_POST['category'] ?? '');
+        $taskStatus = (($_POST['task_status'] ?? '') === 'ended') ? 'ended' : 'published';
+        $startsAt = task_parse_datetime_local_input((string) ($_POST['starts_at'] ?? ''));
+        $endsAt = task_parse_datetime_local_input((string) ($_POST['ends_at'] ?? ''));
+        $maxRaw = trim((string) ($_POST['max_completions'] ?? ''));
+        $maxCompletions = ($maxRaw === '') ? null : max(1, (int) $maxRaw);
+        $coverUrl = trim((string) ($_POST['cover_image_url'] ?? ''));
+        $coverBind = $coverUrl === '' ? null : $coverUrl;
         $schemaJson = issuerBuildFormSchemaFromPost();
 
-        if ($taskId <= 0 || $title === '' || $summary === '' || $description === '' || $category === '' || $rewardXp < 0) {
+        if ($coverUrl !== '' && !filter_var($coverUrl, FILTER_VALIDATE_URL)) {
+            $error = '封面圖網址格式不正確（請使用 http/https 完整網址）。';
+        } elseif ($taskId <= 0 || $title === '' || $summary === '' || $description === '' || $category === '' || $rewardXp < 0) {
             $error = '請填寫完整任務資訊。';
+        } elseif ($startsAt === null || $endsAt === null) {
+            $error = '請填寫開始與截止時間（台灣時間）。';
         } else {
-            $stmt = $conn->prepare('UPDATE tasks SET title = ?, summary = ?, description = ?, reward_xp = ?, category = ?, form_schema = ? WHERE id = ? AND created_by = ?');
-            $stmt->bind_param('ssisssii', $title, $summary, $description, $rewardXp, $category, $schemaJson, $taskId, $userId);
-            if ($stmt->execute()) {
-                if ($stmt->affected_rows > 0) {
-                    $message = '任務已更新。';
-                } else {
-                    $chk = $conn->prepare('SELECT id FROM tasks WHERE id = ? AND created_by = ? LIMIT 1');
-                    $chk->bind_param('ii', $taskId, $userId);
-                    $chk->execute();
-                    $chk->store_result();
-                    if ($chk->num_rows === 0) {
-                        $error = '找不到任務或無權限編輯。';
-                    } else {
-                        $message = '任務已更新（內容與先前相同）。';
-                    }
-                    $chk->close();
-                }
+            $dStart = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $startsAt, task_taipei_tz());
+            $dEnd = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $endsAt, task_taipei_tz());
+            if ($dEnd <= $dStart) {
+                $error = '截止時間必須晚於開始時間。';
             } else {
-                $error = '更新失敗，請稍後再試。';
+                if ($maxCompletions === null) {
+                    $stmt = $conn->prepare('UPDATE tasks SET title = ?, summary = ?, description = ?, cover_image_url = ?, reward_xp = ?, category = ?, task_status = ?, starts_at = ?, ends_at = ?, max_completions = NULL, form_schema = ? WHERE id = ? AND created_by = ?');
+                    $stmt->bind_param('ssssisssssii', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $schemaJson, $taskId, $userId);
+                } else {
+                    $stmt = $conn->prepare('UPDATE tasks SET title = ?, summary = ?, description = ?, cover_image_url = ?, reward_xp = ?, category = ?, task_status = ?, starts_at = ?, ends_at = ?, max_completions = ?, form_schema = ? WHERE id = ? AND created_by = ?');
+                    $stmt->bind_param('ssssisssssisii', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $maxCompletions, $schemaJson, $taskId, $userId);
+                }
+                if ($stmt->execute()) {
+                    if ($stmt->affected_rows > 0) {
+                        $message = '任務已更新。';
+                    } else {
+                        $chk = $conn->prepare('SELECT id FROM tasks WHERE id = ? AND created_by = ? LIMIT 1');
+                        $chk->bind_param('ii', $taskId, $userId);
+                        $chk->execute();
+                        $chk->store_result();
+                        if ($chk->num_rows === 0) {
+                            $error = '找不到任務或無權限編輯。';
+                        } else {
+                            $message = '任務已更新（內容與先前相同）。';
+                        }
+                        $chk->close();
+                    }
+                } else {
+                    $error = '更新失敗，請稍後再試。';
+                }
+                $stmt->close();
             }
-            $stmt->close();
+        }
+    }
+
+    if ($action === 'review_submission') {
+        $submissionId = (int) ($_POST['submission_id'] ?? 0);
+        $decision = (string) ($_POST['decision'] ?? '');
+        $reviewNote = trim((string) ($_POST['review_note'] ?? ''));
+        $defaultReject = '與要求不符，請修正後重新提交。';
+        if ($decision === 'reject' && $reviewNote === '') {
+            $reviewNote = $defaultReject;
+        }
+        if ($submissionId <= 0 || !in_array($decision, ['approve', 'reject'], true)) {
+            $error = '審核資料不正確。';
+        } else {
+            $chk = $conn->prepare('SELECT s.id, s.user_id, s.task_id, s.status, t.title, t.created_by FROM submissions s INNER JOIN tasks t ON t.id = s.task_id WHERE s.id = ? LIMIT 1');
+            $chk->bind_param('i', $submissionId);
+            $chk->execute();
+            $cr = $chk->get_result();
+            $row = $cr ? $cr->fetch_assoc() : null;
+            $chk->close();
+            if (!$row || ($row['status'] ?? '') !== 'pending') {
+                $error = '找不到待審核的提交，或狀態已變更。';
+            } elseif ((int) ($row['created_by'] ?? 0) !== $userId) {
+                $error = '無權審核此任務的提交。';
+            } elseif ($decision === 'approve') {
+                $stmt = $conn->prepare("UPDATE submissions SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ? AND status = 'pending'");
+                $stmt->bind_param('ii', $userId, $submissionId);
+                if ($stmt->execute() && $stmt->affected_rows > 0) {
+                    $message = '已核准該筆提交。';
+                } else {
+                    $error = '核准失敗。';
+                }
+                $stmt->close();
+            } else {
+                $title = (string) ($row['title'] ?? '');
+                $targetUserId = (int) $row['user_id'];
+                $taskIdForNotice = (int) $row['task_id'];
+                $noticeBody = '任務「' . $title . '」審核未通過。原因：' . $reviewNote;
+                $conn->begin_transaction();
+                try {
+                    $ins = $conn->prepare('INSERT INTO member_notices (user_id, task_id, message) VALUES (?, ?, ?)');
+                    $ins->bind_param('iis', $targetUserId, $taskIdForNotice, $noticeBody);
+                    if (!$ins->execute()) {
+                        throw new RuntimeException('notice');
+                    }
+                    $ins->close();
+                    $del = $conn->prepare('DELETE FROM submissions WHERE id = ? AND status = ?');
+                    $stPending = 'pending';
+                    $del->bind_param('is', $submissionId, $stPending);
+                    if (!$del->execute() || $del->affected_rows < 1) {
+                        throw new RuntimeException('delete');
+                    }
+                    $del->close();
+                    $conn->commit();
+                    $message = '已駁回並通知會員。';
+                } catch (Throwable $e) {
+                    $conn->rollback();
+                    $error = '駁回處理失敗，請稍後再試。';
+                }
+            }
         }
     }
 
@@ -129,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $editId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
 $editTask = null;
 if ($editId > 0) {
-    $est = $conn->prepare('SELECT id, title, summary, description, reward_xp, category, form_schema, created_at FROM tasks WHERE id = ? AND created_by = ? LIMIT 1');
+    $est = $conn->prepare('SELECT id, title, summary, description, cover_image_url, reward_xp, category, task_status, starts_at, ends_at, max_completions, form_schema, created_at FROM tasks WHERE id = ? AND created_by = ? LIMIT 1');
     $est->bind_param('ii', $editId, $userId);
     $est->execute();
     $eres = $est->get_result();
@@ -150,7 +262,7 @@ if ($submissionsTaskId > 0) {
     if ($ort && ($row = $ort->fetch_assoc())) {
         $submissionTaskTitle = $row['title'];
         $own->close();
-        $q = $conn->prepare('SELECT s.submitted_at, s.response_json, u.username FROM submissions s JOIN users u ON u.id = s.user_id WHERE s.task_id = ? ORDER BY s.submitted_at DESC');
+        $q = $conn->prepare('SELECT s.id AS submission_id, s.status, s.submitted_at, s.response_json, u.username FROM submissions s JOIN users u ON u.id = s.user_id WHERE s.task_id = ? ORDER BY s.submitted_at DESC');
         $q->bind_param('i', $submissionsTaskId);
         $q->execute();
         $qr = $q->get_result();
@@ -166,7 +278,7 @@ if ($submissionsTaskId > 0) {
 }
 
 $myTasks = [];
-$mt = $conn->prepare('SELECT id, title, summary, reward_xp, category, created_at FROM tasks WHERE created_by = ? ORDER BY created_at DESC');
+$mt = $conn->prepare('SELECT id, title, summary, reward_xp, category, task_status, starts_at, ends_at, max_completions, created_at FROM tasks WHERE created_by = ? ORDER BY created_at DESC');
 $mt->bind_param('i', $userId);
 $mt->execute();
 $mtr = $mt->get_result();
@@ -184,6 +296,12 @@ if ($editTask && !empty($editTask['form_schema'])) {
         $schemaFields = $decoded;
     }
 }
+
+$issuerTaskFormStarts = $editTask ? task_datetime_local_value($editTask['starts_at'] ?? '') : task_now_taipei()->format('Y-m-d\TH:i');
+$issuerTaskFormEnds = $editTask ? task_datetime_local_value($editTask['ends_at'] ?? '') : task_now_taipei()->modify('+60 days')->format('Y-m-d\TH:i');
+$issuerTaskFormStatus = ($editTask && (($editTask['task_status'] ?? '') === 'ended')) ? 'ended' : 'published';
+$issuerTaskFormMax = ($editTask && $editTask['max_completions'] !== null && $editTask['max_completions'] !== '') ? (string) (int) $editTask['max_completions'] : '';
+$issuerTaskFormCover = $editTask ? trim((string) ($editTask['cover_image_url'] ?? '')) : '';
 
 function formatTaskDate(string $datetime): string
 {
@@ -244,22 +362,37 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                 <h1 class="mt-4 text-2xl font-semibold text-white">提交紀錄</h1>
                 <p class="mt-1 text-sm text-zinc-300"><?php echo htmlspecialchars($submissionTaskTitle); ?></p>
                 <?php if (empty($submissionRows)): ?>
-                    <p class="mt-6 text-sm text-zinc-400">尚無會員完成此任務。</p>
+                    <p class="mt-6 text-sm text-zinc-400">尚無提交紀錄。</p>
                 <?php else: ?>
                     <div class="mt-6 overflow-x-auto rounded-2xl border border-white/10">
                         <table class="min-w-full text-left text-sm">
                             <thead class="border-b border-white/10 bg-white/[0.04] text-xs uppercase tracking-wider text-zinc-400">
                                 <tr>
                                     <th class="px-4 py-3">會員</th>
+                                    <th class="px-4 py-3">狀態</th>
                                     <th class="px-4 py-3">提交時間</th>
                                     <th class="px-4 py-3">自訂欄位內容</th>
+                                    <th class="px-4 py-3 text-right">審核</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-white/10">
                                 <?php foreach ($submissionRows as $sr): ?>
+                                    <?php
+                                    $srStatus = (string) ($sr['status'] ?? '');
+                                    $isPending = ($srStatus === 'pending');
+                                    ?>
                                     <tr class="text-zinc-200">
                                         <td class="px-4 py-3 font-medium text-white"><?php echo htmlspecialchars($sr['username']); ?></td>
-                                        <td class="px-4 py-3 text-zinc-400"><?php echo htmlspecialchars($sr['submitted_at']); ?></td>
+                                        <td class="px-4 py-3">
+                                            <?php if ($srStatus === 'approved'): ?>
+                                                <span class="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-200">已核准</span>
+                                            <?php elseif ($isPending): ?>
+                                                <span class="rounded-full border border-amber-400/40 bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-200">待審核</span>
+                                            <?php else: ?>
+                                                <span class="text-zinc-500"><?php echo htmlspecialchars($srStatus); ?></span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="px-4 py-3 text-zinc-400"><?php echo htmlspecialchars(task_format_taipei_display($sr['submitted_at'] ?? '')); ?></td>
                                         <td class="px-4 py-3 text-zinc-300">
                                             <?php
                                             $rj = $sr['response_json'] ?? null;
@@ -276,6 +409,27 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                                                 }
                                             }
                                             ?>
+                                        </td>
+                                        <td class="px-4 py-3 text-right align-top">
+                                            <?php if ($isPending): ?>
+                                                <div class="flex flex-col items-end gap-2">
+                                                    <form method="post" action="./issuer_portal.php?submissions=<?php echo (int) $submissionsTaskId; ?>" class="inline">
+                                                        <input type="hidden" name="action" value="review_submission">
+                                                        <input type="hidden" name="submission_id" value="<?php echo (int) $sr['submission_id']; ?>">
+                                                        <input type="hidden" name="decision" value="approve">
+                                                        <button type="submit" class="rounded-full bg-emerald-400/90 px-3 py-1.5 text-xs font-semibold text-black hover:bg-emerald-300">核准</button>
+                                                    </form>
+                                                    <form method="post" action="./issuer_portal.php?submissions=<?php echo (int) $submissionsTaskId; ?>" class="flex flex-col items-end gap-1">
+                                                        <input type="hidden" name="action" value="review_submission">
+                                                        <input type="hidden" name="submission_id" value="<?php echo (int) $sr['submission_id']; ?>">
+                                                        <input type="hidden" name="decision" value="reject">
+                                                        <input name="review_note" type="text" class="w-40 rounded-lg border border-white/15 bg-white/[0.06] px-2 py-1 text-xs text-white placeholder:text-zinc-500" placeholder="駁回原因">
+                                                        <button type="submit" class="rounded-full border border-rose-400/50 bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-200">駁回</button>
+                                                    </form>
+                                                </div>
+                                            <?php else: ?>
+                                                <span class="text-zinc-600">—</span>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -307,6 +461,10 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                         <label class="mb-2 block text-sm font-medium text-zinc-300" for="description">完整說明（登入後可見）</label>
                         <textarea id="description" name="description" rows="4" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required><?php echo $editTask ? htmlspecialchars($editTask['description']) : ''; ?></textarea>
                     </div>
+                    <div>
+                        <label class="mb-2 block text-sm font-medium text-zinc-300" for="cover_image_url">封面圖網址（選填）</label>
+                        <input id="cover_image_url" name="cover_image_url" type="url" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" placeholder="https://…" value="<?php echo htmlspecialchars($issuerTaskFormCover); ?>">
+                    </div>
                     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div>
                             <label class="mb-2 block text-sm font-medium text-zinc-300" for="reward_xp">獎勵 XP</label>
@@ -318,29 +476,67 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                         </div>
                     </div>
 
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="starts_at">開始時間（台灣時間）</label>
+                            <input id="starts_at" name="starts_at" type="datetime-local" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo htmlspecialchars($issuerTaskFormStarts); ?>">
+                        </div>
+                        <div>
+                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="ends_at">截止時間（台灣時間）</label>
+                            <input id="ends_at" name="ends_at" type="datetime-local" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo htmlspecialchars($issuerTaskFormEnds); ?>">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="task_status">任務狀態</label>
+                            <select id="task_status" name="task_status" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50">
+                                <option value="published" <?php echo $issuerTaskFormStatus === 'published' ? 'selected' : ''; ?>>已發布</option>
+                                <option value="ended" <?php echo $issuerTaskFormStatus === 'ended' ? 'selected' : ''; ?>>已結束（不可提交）</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="max_completions">核准名額上限（選填）</label>
+                            <input id="max_completions" name="max_completions" type="number" min="1" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" placeholder="留空＝不限名額" value="<?php echo htmlspecialchars($issuerTaskFormMax); ?>">
+                        </div>
+                    </div>
+
                     <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                         <p class="text-sm font-medium text-white">會員完成任務時要填的欄位</p>
-                        <p class="mt-1 text-xs text-zinc-500">例如：錢包地址、IG 連結、Discord。欄位代碼僅能使用英文、數字、底線。</p>
+                        <p class="mt-1 text-xs text-zinc-500">類型含單行、多行、網址、Email、勾選；可設定必填／選填。欄位代碼僅能使用英文、數字、底線。</p>
                         <div id="field-rows" class="mt-4 space-y-3">
                             <?php if (!empty($schemaFields)): ?>
                                 <?php foreach ($schemaFields as $idx => $f): ?>
-                                    <div class="field-row grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-black/20 p-3 md:grid-cols-12 md:items-end">
-                                        <div class="md:col-span-3">
+                                    <?php
+                                    $ft = (string) ($f['type'] ?? 'text');
+                                    $fr = !isset($f['required']) || $f['required'] === true || $f['required'] === 1 || $f['required'] === '1';
+                                    ?>
+                                    <div class="field-row grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-black/20 p-3 lg:grid-cols-12 lg:items-end">
+                                        <div class="lg:col-span-2">
                                             <label class="text-xs text-zinc-400">欄位代碼</label>
                                             <input name="field_key[]" class="mt-1 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white" value="<?php echo htmlspecialchars($f['key'] ?? ''); ?>" placeholder="wallet">
                                         </div>
-                                        <div class="md:col-span-5">
+                                        <div class="lg:col-span-4">
                                             <label class="text-xs text-zinc-400">顯示名稱</label>
                                             <input name="field_label[]" class="mt-1 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white" value="<?php echo htmlspecialchars($f['label'] ?? ''); ?>" placeholder="錢包地址">
                                         </div>
-                                        <div class="md:col-span-3">
+                                        <div class="lg:col-span-3">
                                             <label class="text-xs text-zinc-400">類型</label>
                                             <select name="field_type[]" class="mt-1 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white">
-                                                <option value="text" <?php echo (($f['type'] ?? '') === 'url') ? '' : 'selected'; ?>>文字</option>
-                                                <option value="url" <?php echo (($f['type'] ?? '') === 'url') ? 'selected' : ''; ?>>網址</option>
+                                                <option value="text" <?php echo $ft === 'text' ? 'selected' : ''; ?>>單行文字</option>
+                                                <option value="textarea" <?php echo $ft === 'textarea' ? 'selected' : ''; ?>>多行文字</option>
+                                                <option value="url" <?php echo $ft === 'url' ? 'selected' : ''; ?>>網址</option>
+                                                <option value="email" <?php echo $ft === 'email' ? 'selected' : ''; ?>>Email</option>
+                                                <option value="checkbox" <?php echo $ft === 'checkbox' ? 'selected' : ''; ?>>勾選</option>
                                             </select>
                                         </div>
-                                        <div class="md:col-span-1 flex md:justify-end">
+                                        <div class="lg:col-span-2">
+                                            <label class="text-xs text-zinc-400">驗證</label>
+                                            <select name="field_required[]" class="mt-1 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white">
+                                                <option value="1" <?php echo $fr ? 'selected' : ''; ?>>必填</option>
+                                                <option value="0" <?php echo $fr ? '' : 'selected'; ?>>選填</option>
+                                            </select>
+                                        </div>
+                                        <div class="lg:col-span-1 flex lg:justify-end">
                                             <button type="button" class="remove-row mt-4 rounded-lg border border-white/20 px-2 py-2 text-xs text-zinc-300 hover:bg-white/10">刪</button>
                                         </div>
                                     </div>
@@ -409,23 +605,33 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
     <?php require __DIR__ . '/includes/site_footer.php'; ?>
 
     <template id="field-row-template">
-        <div class="field-row grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-black/20 p-3 md:grid-cols-12 md:items-end">
-            <div class="md:col-span-3">
+        <div class="field-row grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-black/20 p-3 lg:grid-cols-12 lg:items-end">
+            <div class="lg:col-span-2">
                 <label class="text-xs text-zinc-400">欄位代碼</label>
                 <input name="field_key[]" class="mt-1 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white" placeholder="wallet">
             </div>
-            <div class="md:col-span-5">
+            <div class="lg:col-span-4">
                 <label class="text-xs text-zinc-400">顯示名稱</label>
                 <input name="field_label[]" class="mt-1 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white" placeholder="錢包地址">
             </div>
-            <div class="md:col-span-3">
+            <div class="lg:col-span-3">
                 <label class="text-xs text-zinc-400">類型</label>
                 <select name="field_type[]" class="mt-1 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white">
-                    <option value="text">文字</option>
+                    <option value="text">單行文字</option>
+                    <option value="textarea">多行文字</option>
                     <option value="url">網址</option>
+                    <option value="email">Email</option>
+                    <option value="checkbox">勾選</option>
                 </select>
             </div>
-            <div class="md:col-span-1 flex md:justify-end">
+            <div class="lg:col-span-2">
+                <label class="text-xs text-zinc-400">驗證</label>
+                <select name="field_required[]" class="mt-1 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white">
+                    <option value="1" selected>必填</option>
+                    <option value="0">選填</option>
+                </select>
+            </div>
+            <div class="lg:col-span-1 flex lg:justify-end">
                 <button type="button" class="remove-row mt-4 rounded-lg border border-white/20 px-2 py-2 text-xs text-zinc-300 hover:bg-white/10">刪</button>
             </div>
         </div>
