@@ -3,7 +3,7 @@ session_start();
 require_once './db.php';
 
 $tasks = [];
-$taskQuery = $conn->query('SELECT id, title, description, reward_xp, category, created_at FROM tasks ORDER BY created_at DESC');
+$taskQuery = $conn->query('SELECT id, title, summary, description, reward_xp, category, created_at FROM tasks ORDER BY created_at DESC');
 if ($taskQuery) {
     while ($row = $taskQuery->fetch_assoc()) {
         $tasks[] = $row;
@@ -11,6 +11,29 @@ if ($taskQuery) {
 }
 
 $isLoggedIn = isset($_SESSION['user_id'], $_SESSION['role']);
+$userRole = $isLoggedIn ? (string) ($_SESSION['role'] ?? '') : '';
+
+function formatTaskDate(string $datetime): string
+{
+    $timestamp = strtotime($datetime);
+    if ($timestamp === false) {
+        return $datetime;
+    }
+    return date('M d, Y', $timestamp);
+}
+
+function taskPublicTeaser(array $task): string
+{
+    $s = trim((string) ($task['summary'] ?? ''));
+    if ($s !== '') {
+        return $s;
+    }
+    $d = (string) ($task['description'] ?? '');
+    if (function_exists('mb_strimwidth')) {
+        return mb_strimwidth($d, 0, 160, '…', 'UTF-8');
+    }
+    return strlen($d) > 160 ? substr($d, 0, 160) . '…' : $d;
+}
 ?>
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -24,69 +47,118 @@ $isLoggedIn = isset($_SESSION['user_id'], $_SESSION['role']);
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: "Inter", sans-serif; }
+        .fade-in-up {
+            animation: fadeInUp 560ms ease-out both;
+        }
+        .fade-in-up-delay {
+            animation: fadeInUp 720ms ease-out both;
+        }
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
     </style>
+    <?php require __DIR__ . '/includes/head_common.php'; ?>
 </head>
-<body class="bg-slate-50 text-slate-800">
-    <header class="sticky top-0 z-10 backdrop-blur bg-slate-50/85 border-b border-slate-200">
-        <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-            <a href="./index.php" class="flex items-center gap-3">
-                <span class="h-10 w-10 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600"></span>
-                <span class="text-lg font-bold tracking-tight">Web3 Task Aggregator</span>
-            </a>
-            <?php if ($isLoggedIn): ?>
-                <div class="flex items-center gap-3">
-                    <a href="./dashboard.php" class="rounded-2xl bg-white border border-slate-200 px-4 py-2 text-sm font-semibold hover:bg-slate-100 transition">進入後台</a>
-                    <a href="./login.php?action=logout" class="rounded-2xl px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition">登出</a>
-                </div>
-            <?php else: ?>
-                <a href="./login.php" class="rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-2 text-sm font-semibold hover:opacity-95 transition">登入</a>
-            <?php endif; ?>
-        </div>
-    </header>
+<body class="min-h-screen bg-[#0b0b0b] text-zinc-100 antialiased selection:bg-amber-300/25 selection:text-white">
+    <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10">
+        <div class="absolute inset-0 bg-[radial-gradient(1000px_circle_at_14%_-15%,rgba(251,191,36,0.20),transparent_58%),radial-gradient(900px_circle_at_86%_0%,rgba(255,255,255,0.05),transparent_62%)]"></div>
+        <div class="absolute inset-0 opacity-25 [background-image:linear-gradient(to_right,rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.055)_1px,transparent_1px)] [background-size:60px_60px]"></div>
+    </div>
 
-    <main>
-        <section class="max-w-6xl mx-auto px-4 pt-16 pb-12">
-            <div class="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 md:p-12">
-                <p class="inline-flex rounded-full bg-indigo-50 text-indigo-700 px-4 py-2 text-xs font-semibold tracking-wide">WEB3 MODERN LIGHT</p>
-                <h1 class="mt-5 text-4xl md:text-5xl font-extrabold tracking-tight">
-                    聚合任務，一鍵參與，
-                    <span class="bg-gradient-to-r from-indigo-500 to-purple-600 bg-clip-text text-transparent">快速累積 XP</span>
+    <?php
+    $shellBreadcrumbs = [
+        ['label' => '首頁', 'href' => './index.php'],
+        ['label' => '任務展示', 'href' => null],
+    ];
+    $shellPage = $isLoggedIn ? 'auth_index' : 'guest_index';
+    $shellUser = $isLoggedIn ? ['name' => (string) ($_SESSION['username'] ?? ''), 'role' => $userRole] : null;
+    require __DIR__ . '/includes/site_header.php';
+    ?>
+
+    <main class="mx-auto w-full max-w-6xl px-4">
+        <section class="grid gap-10 pb-14 pt-16 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
+            <div class="fade-in-up">
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">Group 09 / Curated Missions</p>
+                <h1 class="mt-4 max-w-4xl text-4xl font-semibold leading-tight tracking-tight text-white md:text-6xl">
+                    Web3 任務整合平台，
+                    <span class="text-zinc-300">讓任務發布、瀏覽與參與更直接。</span>
                 </h1>
-                <p class="mt-5 text-slate-600 text-lg max-w-3xl">
-                    Group 09 Web3 任務平台，提供任務發布、參與與完成紀錄，讓團隊管理流程更直覺。
+                <p class="mt-6 max-w-2xl text-base leading-relaxed text-zinc-300 md:text-lg">
+                    聚合任務、清楚分類、明確回饋。首頁以效率為優先，幫你快速找到下一個可執行任務。
                 </p>
                 <div class="mt-8 flex flex-wrap gap-3">
-                    <a href="./dashboard.php" class="rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-5 py-3 font-semibold hover:opacity-95 transition">立即開始</a>
-                    <a href="./login.php" class="rounded-2xl bg-white border border-slate-200 px-5 py-3 font-semibold hover:bg-slate-100 transition">登入帳號</a>
+                    <a href="./dashboard.php" class="rounded-full bg-amber-300 px-6 py-3 text-sm font-semibold text-black transition hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200">立即開始</a>
+                    <a href="./login.php" class="rounded-full border border-white/20 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50">登入帳號</a>
                 </div>
             </div>
+            <aside class="fade-in-up-delay rounded-3xl border border-amber-200/20 bg-white/[0.04] p-6 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)]">
+                <p class="text-xs uppercase tracking-[0.2em] text-amber-300">Today Snapshot</p>
+                <div class="mt-4 space-y-4">
+                    <div class="flex items-baseline justify-between border-b border-white/10 pb-3">
+                        <span class="text-sm text-zinc-300">總任務</span>
+                        <span class="text-2xl font-semibold text-white"><?php echo count($tasks); ?></span>
+                    </div>
+                    <div class="flex items-baseline justify-between border-b border-white/10 pb-3">
+                        <span class="text-sm text-zinc-300">狀態</span>
+                        <span class="text-sm font-medium text-zinc-100"><?php echo empty($tasks) ? '等待上架' : '可參與'; ?></span>
+                    </div>
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-sm text-zinc-300">資料來源</span>
+                        <span class="text-sm font-medium text-zinc-100">Internal Feed</span>
+                    </div>
+                </div>
+            </aside>
         </section>
 
-        <section class="max-w-6xl mx-auto px-4 pb-16">
-            <div class="flex items-center justify-between mb-6">
-                <h2 class="text-2xl font-bold tracking-tight">任務展示區</h2>
-                <span class="text-sm text-slate-500">共 <?php echo count($tasks); ?> 筆任務</span>
+        <section class="pb-16">
+            <div class="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-white/12 pb-5">
+                <div>
+                    <p class="text-xs uppercase tracking-[0.2em] text-amber-300">Task Board</p>
+                    <h2 class="mt-2 text-3xl font-semibold tracking-tight text-white">任務展示區</h2>
+                </div>
+                <span class="rounded-full border border-amber-300/25 bg-amber-300/10 px-4 py-1.5 text-xs uppercase tracking-[0.15em] text-zinc-100">
+                    <?php echo count($tasks); ?> Tasks Available
+                </span>
             </div>
             <?php if (empty($tasks)): ?>
-                <div class="bg-white rounded-3xl shadow-md border border-slate-200 p-8 text-slate-500">
-                    目前尚無任務，請由管理員登入後台新增任務。
+                <div class="rounded-3xl border border-dashed border-amber-300/30 bg-white/[0.03] p-10 text-center">
+                    <p class="text-sm text-zinc-300">目前尚無任務，請由管理員或項目方發布任務。</p>
                 </div>
             <?php else: ?>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                     <?php foreach ($tasks as $task): ?>
-                        <article class="bg-white rounded-3xl shadow-md border border-slate-200 p-6">
-                            <div class="flex items-center justify-between gap-2">
-                                <p class="text-xs font-semibold px-3 py-1 rounded-full bg-slate-100 text-slate-600">
+                        <article class="group flex h-full flex-col rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-[0_15px_40px_-30px_rgba(0,0,0,0.9)] transition hover:-translate-y-0.5 hover:border-amber-300/45 hover:bg-white/[0.065]">
+                            <div class="flex items-center justify-between gap-3">
+                                <p class="rounded-full border border-amber-300/35 bg-amber-300/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-amber-200">
                                     <?php echo htmlspecialchars($task['category']); ?>
                                 </p>
-                                <p class="text-xs text-slate-400">
-                                    <?php echo htmlspecialchars($task['created_at']); ?>
+                                <p class="text-xs text-zinc-500">
+                                    <?php echo htmlspecialchars(formatTaskDate($task['created_at'])); ?>
                                 </p>
                             </div>
-                            <h3 class="mt-4 text-lg font-bold"><?php echo htmlspecialchars($task['title']); ?></h3>
-                            <p class="mt-2 text-slate-600 text-sm leading-relaxed"><?php echo nl2br(htmlspecialchars($task['description'])); ?></p>
-                            <div class="mt-5 inline-flex rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-2 text-sm font-semibold">
-                                +<?php echo (int) $task['reward_xp']; ?> XP
+                            <h3 class="mt-5 text-xl font-semibold leading-snug tracking-tight text-white">
+                                <?php echo htmlspecialchars($task['title']); ?>
+                            </h3>
+                            <?php if ($isLoggedIn): ?>
+                                <p class="mt-3 flex-1 text-sm leading-relaxed text-zinc-300">
+                                    <?php echo nl2br(htmlspecialchars($task['description'])); ?>
+                                </p>
+                            <?php else: ?>
+                                <p class="mt-3 flex-1 text-sm leading-relaxed text-zinc-300">
+                                    <?php echo nl2br(htmlspecialchars(taskPublicTeaser($task))); ?>
+                                </p>
+                                <p class="mt-2 text-xs text-amber-200/80">登入後可查看完整說明並參與任務。</p>
+                            <?php endif; ?>
+                            <div class="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
+                                <span class="text-xs uppercase tracking-[0.12em] text-zinc-500">Reward</span>
+                                <span class="text-base font-semibold text-amber-200">+<?php echo (int) $task['reward_xp']; ?> XP</span>
                             </div>
                         </article>
                     <?php endforeach; ?>
@@ -94,5 +166,6 @@ $isLoggedIn = isset($_SESSION['user_id'], $_SESSION['role']);
             <?php endif; ?>
         </section>
     </main>
+    <?php require __DIR__ . '/includes/site_footer.php'; ?>
 </body>
 </html>
