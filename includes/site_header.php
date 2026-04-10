@@ -9,6 +9,12 @@ $shellPage = $shellPage ?? 'guest_index';
 $shellBreadcrumbs = $shellBreadcrumbs ?? [['label' => '首頁', 'href' => null]];
 $shellUser = $shellUser ?? null;
 $shellIssuer = is_array($shellUser) && (($shellUser['role'] ?? '') === 'issuer');
+$shellRoleLabels = ['admin' => '管理員', 'member' => '會員', 'issuer' => '項目方'];
+$shellRoleLabel = '';
+if (is_array($shellUser) && isset($shellUser['role'])) {
+    $r0 = (string) $shellUser['role'];
+    $shellRoleLabel = $shellRoleLabels[$r0] ?? $r0;
+}
 ?>
 <header class="sticky top-0 z-30 border-b border-white/10 bg-[#0b0b0b]/95 backdrop-blur">
     <div class="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 md:py-4">
@@ -33,13 +39,15 @@ $shellIssuer = is_array($shellUser) && (($shellUser['role'] ?? '') === 'issuer')
                     <span class="hidden text-sm text-zinc-400 lg:inline">
                         <span class="text-zinc-200"><?php echo htmlspecialchars($shellUser['name'] ?? ''); ?></span>
                         <span class="mx-1.5 text-zinc-600">·</span>
-                        <span class="uppercase tracking-wider text-amber-200/90"><?php echo htmlspecialchars($shellUser['role'] ?? ''); ?></span>
+                        <span class="tracking-wide text-amber-200/90"><?php echo htmlspecialchars($shellRoleLabel); ?></span>
                     </span>
                 <?php endif; ?>
                 <?php if ($shellIssuer): ?>
                     <a href="./issuer_portal.php" class="rounded-full border border-amber-300/35 bg-amber-200/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-200/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60">項目方中心</a>
+                <?php elseif (($shellUser['role'] ?? '') === 'admin'): ?>
+                    <a href="./dashboard.php" class="rounded-full border border-amber-300/35 bg-amber-200/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-200/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60">管理後台</a>
                 <?php else: ?>
-                    <a href="./dashboard.php" class="rounded-full border border-amber-300/35 bg-amber-200/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-200/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60">進入後台</a>
+                    <a href="./dashboard.php" class="rounded-full border border-amber-300/35 bg-amber-200/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-200/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60">任務中心</a>
                 <?php endif; ?>
                 <a href="./login.php?action=logout" class="rounded-full border border-transparent px-4 py-2 text-sm font-medium text-zinc-300 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40">登出</a>
             <?php elseif ($shellPage === 'guest_login'): ?>
@@ -53,7 +61,7 @@ $shellIssuer = is_array($shellUser) && (($shellUser['role'] ?? '') === 'issuer')
                     <span class="hidden text-sm text-zinc-400 lg:inline">
                         <span class="text-zinc-200"><?php echo htmlspecialchars($shellUser['name'] ?? ''); ?></span>
                         <span class="mx-1.5 text-zinc-600">·</span>
-                        <span class="uppercase tracking-wider text-amber-200/90"><?php echo htmlspecialchars($shellUser['role'] ?? ''); ?></span>
+                        <span class="tracking-wide text-amber-200/90"><?php echo htmlspecialchars($shellRoleLabel); ?></span>
                     </span>
                 <?php endif; ?>
                 <a href="./index.php" class="rounded-full border border-amber-300/35 bg-amber-200/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-200/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60">首頁</a>
@@ -69,7 +77,7 @@ $shellIssuer = is_array($shellUser) && (($shellUser['role'] ?? '') === 'issuer')
                     <p class="border-b border-white/10 px-1 py-2 text-sm text-zinc-400">
                         <span class="text-zinc-200"><?php echo htmlspecialchars($shellUser['name'] ?? ''); ?></span>
                         <span class="text-zinc-600"> · </span>
-                        <span class="uppercase text-amber-200/90"><?php echo htmlspecialchars($shellUser['role'] ?? ''); ?></span>
+                        <span class="text-amber-200/90"><?php echo htmlspecialchars($shellRoleLabel); ?></span>
                     </p>
                 <?php endif; ?>
             <?php endif; ?>
@@ -85,8 +93,10 @@ $shellIssuer = is_array($shellUser) && (($shellUser['role'] ?? '') === 'issuer')
             <?php elseif ($shellPage === 'auth_index'): ?>
                 <?php if ($shellIssuer): ?>
                     <a href="./issuer_portal.php" class="rounded-xl px-3 py-3 text-sm font-medium text-amber-200 hover:bg-white/10">項目方中心</a>
+                <?php elseif (($shellUser['role'] ?? '') === 'admin'): ?>
+                    <a href="./dashboard.php" class="rounded-xl px-3 py-3 text-sm font-medium text-amber-200 hover:bg-white/10">管理後台</a>
                 <?php else: ?>
-                    <a href="./dashboard.php" class="rounded-xl px-3 py-3 text-sm font-medium text-amber-200 hover:bg-white/10">進入後台</a>
+                    <a href="./dashboard.php" class="rounded-xl px-3 py-3 text-sm font-medium text-amber-200 hover:bg-white/10">任務中心</a>
                 <?php endif; ?>
                 <a href="./login.php?action=logout" class="rounded-xl px-3 py-3 text-sm font-medium text-zinc-300 hover:bg-white/10">登出</a>
             <?php elseif ($shellPage === 'auth_dashboard' || $shellPage === 'auth_issuer'): ?>

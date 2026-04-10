@@ -2,6 +2,8 @@
 session_start();
 require_once './db.php';
 
+define('REGISTER_PASSWORD_MIN_LEN', 8);
+
 if (isset($_SESSION['user_id'], $_SESSION['role'])) {
     $lr = $_SESSION['role'];
     header('Location: ' . ($lr === 'issuer' ? './issuer_portal.php' : './dashboard.php'));
@@ -20,8 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = '請填寫帳號與密碼。';
     } elseif (!preg_match('/^[a-zA-Z0-9_]{3,50}$/', $usernameValue)) {
         $error = '帳號須為 3～50 個字元，僅可使用英文、數字與底線。';
-    } elseif (strlen($password) < 6) {
-        $error = '密碼長度至少 6 個字元。';
+    } elseif (strlen($password) < REGISTER_PASSWORD_MIN_LEN) {
+        $error = '密碼長度至少 ' . REGISTER_PASSWORD_MIN_LEN . ' 個字元。';
     } elseif ($password !== $passwordConfirm) {
         $error = '兩次輸入的密碼不一致。';
     } else {
@@ -33,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
 
         if ($exists) {
-            $error = '此帳號已被使用。';
+            $error = '此帳號已被使用，請換一個帳號。';
         } else {
             $hash = password_hash($password, PASSWORD_DEFAULT);
             if ($hash === false) {
@@ -53,6 +55,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+$suppressErrorToast = true;
 ?>
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -101,12 +105,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <main class="mx-auto flex min-h-[calc(100vh-4.5rem)] w-full max-w-6xl items-center justify-center px-4 py-10">
         <section class="fade-in-up w-full max-w-md rounded-3xl border border-white/10 bg-white/[0.04] p-8 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)]">
             <div class="mb-8">
-                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">Group 09 / Register</p>
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">Group 09 · 註冊</p>
                 <h1 class="mt-4 text-3xl font-semibold tracking-tight text-white">建立帳號</h1>
-                <p class="mt-2 text-sm text-zinc-300">註冊後預設為會員（member），可參與任務。</p>
+                <p class="mt-2 text-sm text-zinc-300">註冊後預設為<strong class="text-zinc-200">會員</strong>，可參與任務。</p>
             </div>
 
-            <div id="ajax-error" class="mb-4 hidden rounded-2xl border border-rose-400/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert"></div>
+            <div id="register-form-alert" class="mb-4 <?php echo $error === '' ? 'hidden' : ''; ?> rounded-2xl border border-rose-400/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-100" role="alert" tabindex="-1"><?php echo $error !== '' ? htmlspecialchars($error) : ''; ?></div>
 
             <form id="register-form" method="post" action="./register.php" class="space-y-4" novalidate>
                 <div>
@@ -119,14 +123,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <div>
                     <label class="mb-2 block text-sm font-medium text-zinc-300" for="password">密碼</label>
-                    <input id="password" name="password" type="password" autocomplete="new-password" minlength="6"
+                    <input id="password" name="password" type="password" autocomplete="new-password" minlength="<?php echo (int) REGISTER_PASSWORD_MIN_LEN; ?>"
                         class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50"
-                        placeholder="至少 6 個字元"
+                        placeholder="至少 <?php echo (int) REGISTER_PASSWORD_MIN_LEN; ?> 個字元"
                         required>
                 </div>
                 <div>
                     <label class="mb-2 block text-sm font-medium text-zinc-300" for="password_confirm">確認密碼</label>
-                    <input id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" minlength="6"
+                    <input id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" minlength="<?php echo (int) REGISTER_PASSWORD_MIN_LEN; ?>"
                         class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50"
                         placeholder="再次輸入密碼"
                         required>
@@ -147,39 +151,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <script>
         (function () {
+            var MIN = <?php echo (int) REGISTER_PASSWORD_MIN_LEN; ?>;
             var form = document.getElementById('register-form');
             var usernameInput = document.getElementById('username');
-            var ajaxError = document.getElementById('ajax-error');
+            var alertEl = document.getElementById('register-form-alert');
             var submitBtn = document.getElementById('register-submit');
 
-            function showAjaxError(msg) {
-                ajaxError.textContent = msg;
-                ajaxError.classList.remove('hidden');
+            function showFormError(msg) {
+                alertEl.textContent = msg;
+                alertEl.classList.remove('hidden');
+                alertEl.focus();
             }
 
-            function hideAjaxError() {
-                ajaxError.classList.add('hidden');
-                ajaxError.textContent = '';
+            function hideFormError() {
+                alertEl.classList.add('hidden');
+                alertEl.textContent = '';
             }
+
+            <?php if ($error !== ''): ?>
+            alertEl.focus();
+            <?php endif; ?>
 
             form.addEventListener('submit', function (e) {
                 e.preventDefault();
-                hideAjaxError();
+                hideFormError();
 
                 var username = (usernameInput.value || '').trim();
                 var password = document.getElementById('password').value || '';
                 var passwordConfirm = document.getElementById('password_confirm').value || '';
 
                 if (!username) {
-                    showAjaxError('請輸入帳號。');
+                    showFormError('請輸入帳號。');
                     return;
                 }
-                if (password.length < 6) {
-                    showAjaxError('密碼長度至少 6 個字元。');
+                if (password.length < MIN) {
+                    showFormError('密碼長度至少 ' + MIN + ' 個字元。');
                     return;
                 }
                 if (password !== passwordConfirm) {
-                    showAjaxError('兩次輸入的密碼不一致。');
+                    showFormError('兩次輸入的密碼不一致。');
                     return;
                 }
 
@@ -191,19 +201,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
                         if (!data || !data.ok) {
-                            showAjaxError('無法檢查帳號，請稍後再試。');
+                            showFormError('無法檢查帳號，請稍後再試。');
                             submitBtn.disabled = false;
                             return;
                         }
                         if (!data.available) {
-                            showAjaxError('此帳號已被使用，請換一個帳號。');
+                            showFormError('此帳號已被使用，請換一個帳號。');
                             submitBtn.disabled = false;
                             return;
                         }
                         form.submit();
                     })
                     .catch(function () {
-                        showAjaxError('網路錯誤，請稍後再試。');
+                        showFormError('網路錯誤，請稍後再試。');
                         submitBtn.disabled = false;
                     });
             });

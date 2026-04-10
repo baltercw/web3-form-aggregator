@@ -24,7 +24,7 @@ function formatTaskDate(string $datetime): string
     if ($timestamp === false) {
         return $datetime;
     }
-    return date('M d, Y', $timestamp);
+    return date('Y/m/d', $timestamp);
 }
 
 function taskPublicTeaser(array $task): string
@@ -90,7 +90,7 @@ function taskPublicTeaser(array $task): string
     <main class="mx-auto w-full max-w-6xl px-4">
         <section class="grid gap-10 pb-14 pt-16 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
             <div class="fade-in-up">
-                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">Group 09 / Curated Missions</p>
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">Group 09 · 精選任務</p>
                 <h1 class="mt-4 max-w-4xl text-4xl font-semibold leading-tight tracking-tight text-white md:text-6xl">
                     Web3 任務整合平台，
                     <span class="text-zinc-300">讓任務發布、瀏覽與參與更直接。</span>
@@ -99,12 +99,20 @@ function taskPublicTeaser(array $task): string
                     聚合任務、清楚分類、明確回饋。首頁以效率為優先，幫你快速找到下一個可執行任務。
                 </p>
                 <div class="mt-8 flex flex-wrap gap-3">
-                    <a href="./dashboard.php" class="rounded-full bg-amber-300 px-6 py-3 text-sm font-semibold text-black transition hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200">立即開始</a>
-                    <a href="./login.php" class="rounded-full border border-white/20 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50">登入帳號</a>
+                    <?php if (!$isLoggedIn): ?>
+                        <a href="./register.php" class="rounded-full bg-amber-300 px-6 py-3 text-sm font-semibold text-black transition hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200">免費註冊</a>
+                        <a href="./login.php" class="rounded-full border border-white/20 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50">登入帳號</a>
+                    <?php elseif ($userRole === 'issuer'): ?>
+                        <a href="./issuer_portal.php" class="rounded-full bg-amber-300 px-6 py-3 text-sm font-semibold text-black transition hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200">項目方中心</a>
+                    <?php elseif ($userRole === 'admin'): ?>
+                        <a href="./dashboard.php" class="rounded-full bg-amber-300 px-6 py-3 text-sm font-semibold text-black transition hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200">管理後台</a>
+                    <?php else: ?>
+                        <a href="./dashboard.php" class="rounded-full bg-amber-300 px-6 py-3 text-sm font-semibold text-black transition hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200">前往任務中心</a>
+                    <?php endif; ?>
                 </div>
             </div>
             <aside class="fade-in-up-delay rounded-3xl border border-amber-200/20 bg-white/[0.04] p-6 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)]">
-                <p class="text-xs uppercase tracking-[0.2em] text-amber-300">Today Snapshot</p>
+                <p class="text-xs uppercase tracking-[0.2em] text-amber-300">今日一覽</p>
                 <div class="mt-4 space-y-4">
                     <div class="flex items-baseline justify-between border-b border-white/10 pb-3">
                         <span class="text-sm text-zinc-300">總任務</span>
@@ -116,7 +124,7 @@ function taskPublicTeaser(array $task): string
                     </div>
                     <div class="flex items-baseline justify-between">
                         <span class="text-sm text-zinc-300">資料來源</span>
-                        <span class="text-sm font-medium text-zinc-100">Internal Feed</span>
+                        <span class="text-sm font-medium text-zinc-100">站內列表</span>
                     </div>
                 </div>
             </aside>
@@ -125,11 +133,11 @@ function taskPublicTeaser(array $task): string
         <section class="pb-16">
             <div class="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-white/12 pb-5">
                 <div>
-                    <p class="text-xs uppercase tracking-[0.2em] text-amber-300">Task Board</p>
+                    <p class="text-xs uppercase tracking-[0.2em] text-amber-300">任務看板</p>
                     <h2 class="mt-2 text-3xl font-semibold tracking-tight text-white">任務展示區</h2>
                 </div>
-                <span class="rounded-full border border-amber-300/25 bg-amber-300/10 px-4 py-1.5 text-xs uppercase tracking-[0.15em] text-zinc-100">
-                    <?php echo count($tasks); ?> Tasks Available
+                <span class="rounded-full border border-amber-300/25 bg-amber-300/10 px-4 py-1.5 text-xs tracking-wide text-zinc-100">
+                    共 <?php echo count($tasks); ?> 則任務
                 </span>
             </div>
             <?php if (empty($tasks)): ?>
@@ -197,9 +205,12 @@ function taskPublicTeaser(array $task): string
                                 <p class="mt-2 text-xs text-amber-200/80">登入後可查看完整說明並參與任務。</p>
                             <?php endif; ?>
                             <div class="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
-                                <span class="text-xs uppercase tracking-[0.12em] text-zinc-500">Reward</span>
+                                <span class="text-xs tracking-wide text-zinc-500">獎勵</span>
                                 <span class="text-base font-semibold text-amber-200">+<?php echo (int) $task['reward_xp']; ?> XP</span>
                             </div>
+                            <?php if ($isLoggedIn && $userRole === 'member'): ?>
+                                <a href="./dashboard.php#task-<?php echo (int) $task['id']; ?>" class="mt-3 block w-full rounded-full border border-amber-300/40 bg-amber-300/10 py-2.5 text-center text-sm font-semibold text-amber-100 transition hover:bg-amber-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/50">前往任務中心填寫</a>
+                            <?php endif; ?>
                             </div>
                         </article>
                     <?php endforeach; ?>

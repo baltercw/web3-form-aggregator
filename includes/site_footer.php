@@ -4,6 +4,8 @@ $error = $error ?? '';
 $registeredNotice = $registeredNotice ?? false;
 $toastSuccess = $toastSuccess ?? '';
 $toastError = $toastError ?? '';
+$suppressErrorToast = !empty($suppressErrorToast);
+$suppressRegisteredToast = !empty($suppressRegisteredToast);
 
 $__toastText = '';
 $__toastVariant = '';
@@ -16,10 +18,10 @@ if (!empty($toastSuccess)) {
 } elseif (!empty($message)) {
     $__toastText = (string) $message;
     $__toastVariant = 'success';
-} elseif (!empty($error)) {
+} elseif (!empty($error) && !$suppressErrorToast) {
     $__toastText = (string) $error;
     $__toastVariant = 'error';
-} elseif (!empty($registeredNotice)) {
+} elseif (!empty($registeredNotice) && !$suppressRegisteredToast) {
     $__toastText = '註冊成功，請登入。';
     $__toastVariant = 'success';
 }
@@ -36,9 +38,19 @@ if (!empty($toastSuccess)) {
     var btn = document.getElementById('nav-toggle');
     var panel = document.getElementById('mobile-nav-panel');
     if (btn && panel) {
-        btn.addEventListener('click', function () {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
             panel.classList.toggle('hidden');
             btn.setAttribute('aria-expanded', panel.classList.contains('hidden') ? 'false' : 'true');
+        });
+        document.addEventListener('click', function () {
+            if (!panel.classList.contains('hidden')) {
+                panel.classList.add('hidden');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+        });
+        panel.addEventListener('click', function (e) {
+            e.stopPropagation();
         });
     }
 

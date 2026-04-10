@@ -16,17 +16,18 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 }
 
 $error = '';
+$usernameValue = '';
 $registeredNotice = isset($_GET['registered']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username'] ?? '');
+    $usernameValue = trim($_POST['username'] ?? '');
     $password = trim($_POST['password'] ?? '');
 
-    if ($username === '' || $password === '') {
+    if ($usernameValue === '' || $password === '') {
         $error = '請輸入帳號與密碼。';
     } else {
         $stmt = $conn->prepare('SELECT id, username, password, role FROM users WHERE username = ? LIMIT 1');
-        $stmt->bind_param('s', $username);
+        $stmt->bind_param('s', $usernameValue);
         $stmt->execute();
         $result = $stmt->get_result();
         $user = $result->fetch_assoc();
@@ -44,6 +45,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = '帳號或密碼錯誤。';
     }
 }
+
+$suppressErrorToast = true;
+$suppressRegisteredToast = true;
 ?>
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -92,19 +96,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <main class="mx-auto flex min-h-[calc(100vh-4.5rem)] w-full max-w-6xl items-center justify-center px-4 py-10">
         <section class="fade-in-up w-full max-w-md rounded-3xl border border-white/10 bg-white/[0.04] p-8 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)]">
             <div class="mb-8">
-                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">Group 09 / Sign in</p>
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">Group 09 · 登入</p>
                 <h1 class="mt-4 text-3xl font-semibold tracking-tight text-white">登入平台</h1>
                 <p class="mt-2 text-sm text-zinc-300">管理 Web3 任務與參與進度。</p>
             </div>
 
-            <form method="post" action="./login.php" class="space-y-4">
+            <?php if ($registeredNotice): ?>
+                <div id="login-success-banner" class="mb-4 rounded-2xl border border-emerald-400/35 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100" role="status" tabindex="-1">
+                    註冊成功，請使用新帳號登入。
+                </div>
+            <?php endif; ?>
+
+            <?php if ($error !== ''): ?>
+                <div id="login-form-alert" class="mb-4 rounded-2xl border border-rose-400/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-100" role="alert" tabindex="-1">
+                    <?php echo htmlspecialchars($error); ?>
+                </div>
+            <?php endif; ?>
+
+            <form method="post" action="./login.php" class="space-y-4" novalidate>
                 <div>
                     <label class="mb-2 block text-sm font-medium text-zinc-300" for="username">帳號</label>
-                    <input id="username" name="username" type="text" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" placeholder="請輸入帳號" required>
+                    <input id="username" name="username" type="text" autocomplete="username" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" placeholder="請輸入帳號" required value="<?php echo htmlspecialchars($usernameValue); ?>">
                 </div>
                 <div>
                     <label class="mb-2 block text-sm font-medium text-zinc-300" for="password">密碼</label>
-                    <input id="password" name="password" type="password" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" placeholder="請輸入密碼" required>
+                    <input id="password" name="password" type="password" autocomplete="current-password" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" placeholder="請輸入密碼" required>
                 </div>
                 <button type="submit" class="w-full rounded-full bg-amber-300 py-3 text-sm font-semibold text-black transition hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200">
                     登入
@@ -123,5 +139,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </section>
     </main>
     <?php require __DIR__ . '/includes/site_footer.php'; ?>
+    <script>
+        (function () {
+            var el = document.getElementById('login-form-alert') || document.getElementById('login-success-banner');
+            if (el) el.focus();
+        })();
+    </script>
 </body>
 </html>

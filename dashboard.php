@@ -258,9 +258,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($role === 'member' && $action === 'complete_task') {
-        $taskId = (int) ($_POST['task_id'] ?? 0);
-        if ($taskId <= 0) {
-            $error = '任務資料不正確。';
+        $completeTaskId = (int) ($_POST['task_id'] ?? 0);
+        $completeErr = '';
+
+        if ($completeTaskId <= 0) {
+            $completeErr = '任務資料不正確。';
         } else {
             $tstmt = $conn->prepare(
                 'SELECT t.id, t.form_schema, t.task_status, t.starts_at, t.ends_at, t.max_completions, '
@@ -268,17 +270,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 . 'FROM tasks t WHERE t.id = ? LIMIT 1'
             );
             $stAp = 'approved';
-            $tstmt->bind_param('si', $stAp, $taskId);
+            $tstmt->bind_param('si', $stAp, $completeTaskId);
             $tstmt->execute();
             $tres = $tstmt->get_result();
             $taskRow = $tres ? $tres->fetch_assoc() : null;
             $tstmt->close();
 
             if (!$taskRow) {
-                $error = '找不到任務。';
+                $completeErr = '找不到任務。';
             } else {
                 $existStmt = $conn->prepare('SELECT status FROM submissions WHERE user_id = ? AND task_id = ? LIMIT 1');
-                $existStmt->bind_param('ii', $userId, $taskId);
+                $existStmt->bind_param('ii', $userId, $completeTaskId);
                 $existStmt->execute();
                 $exr = $existStmt->get_result();
                 $existRow = $exr ? $exr->fetch_assoc() : null;
@@ -286,17 +288,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($existRow) {
                     if (($existRow['status'] ?? '') === 'pending') {
-                        $error = '此任務已有提交正在審核中，請稍候。';
+                        $completeErr = '此任務已有提交正在審核中，請稍候。';
                     } elseif (($existRow['status'] ?? '') === 'approved') {
-                        $error = '此任務您已通過審核。';
+                        $completeErr = '此任務您已通過審核。';
                     } else {
-                        $error = '無法提交，請重新整理頁面。';
+                        $completeErr = '無法提交，請重新整理頁面。';
                     }
                 } else {
                     $approvedCount = (int) ($taskRow['approved_count'] ?? 0);
                     $gate = task_submission_gate($taskRow, $approvedCount);
                     if (!$gate['can_submit']) {
-                        $error = '目前無法提交：' . implode('；', $gate['block_labels']);
+                        $completeErr = '目前無法提交：' . implode('；', $gate['block_labels']);
                     } else {
                         $schemaRaw = [];
                         if (!empty($taskRow['form_schema'])) {
@@ -312,22 +314,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         [$respOk, $respErr, $responses] = form_schema_collect_responses($schema, $responsePost);
                         if (!$respOk) {
-                            $error = $respErr;
+                            $completeErr = $respErr;
                         } else {
                             $jsonStr = count($responses) > 0 ? json_encode($responses, JSON_UNESCAPED_UNICODE) : null;
 
                             if ($jsonStr !== null) {
                                 $stmt = $conn->prepare("INSERT INTO submissions (user_id, task_id, status, response_json) VALUES (?, ?, 'pending', ?)");
-                                $stmt->bind_param('iis', $userId, $taskId, $jsonStr);
+                                $stmt->bind_param('iis', $userId, $completeTaskId, $jsonStr);
                             } else {
                                 $stmt = $conn->prepare("INSERT INTO submissions (user_id, task_id, status) VALUES (?, ?, 'pending')");
-                                $stmt->bind_param('ii', $userId, $taskId);
+                                $stmt->bind_param('ii', $userId, $completeTaskId);
                             }
 
                             if ($stmt->execute()) {
                                 $message = '已提交，等待項目方／管理員審核；通過後即視為完成。';
                             } else {
-                                $error = '提交失敗（可能重複提交），請重新整理後再試。';
+                                $completeErr = '提交失敗（可能重複提交），請重新整理後再試。';
                             }
                             $stmt->close();
                         }
@@ -335,7 +337,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+
+        if ($completeErr !== '') {
+            if ($completeTaskId > 0) {
+                $_SESSION['member_task_flash_error'] = $completeErr;
+                header('Location: ./dashboard.php#task-' . $completeTaskId);
+                exit;
+            }
+            $error = $completeErr;
+        }
     }
+}
+
+$memberTaskFlashError = '';
+if ($role === 'member' && !empty($_SESSION['member_task_flash_error'])) {
+    $memberTaskFlashError = (string) $_SESSION['member_task_flash_error'];
+    unset($_SESSION['member_task_flash_error']);
 }
 
 $adminEditId = ($role === 'admin' && isset($_GET['edit'])) ? (int) $_GET['edit'] : 0;
@@ -466,17 +483,17 @@ function formatTaskDate(string $datetime): string
     if ($timestamp === false) {
         return $datetime;
     }
-    return date('M d, Y', $timestamp);
+    return date('Y/m/d', $timestamp);
 }
 
 $shellBreadcrumbs = [
     ['label' => '首頁', 'href' => './index.php'],
 ];
 if ($role === 'admin' && $adminEditTask) {
-    $shellBreadcrumbs[] = ['label' => '後台', 'href' => './dashboard.php'];
+    $shellBreadcrumbs[] = ['label' => '管理後台', 'href' => './dashboard.php'];
     $shellBreadcrumbs[] = ['label' => '編輯任務', 'href' => null];
 } else {
-    $shellBreadcrumbs[] = ['label' => '後台', 'href' => null];
+    $shellBreadcrumbs[] = ['label' => $role === 'member' ? '任務中心' : '管理後台', 'href' => null];
 }
 $shellPage = 'auth_dashboard';
 $shellUser = ['name' => $username, 'role' => $role];
@@ -486,7 +503,7 @@ $shellUser = ['name' => $username, 'role' => $role];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>後台 | Web3 Task Aggregator</title>
+    <title><?php echo $role === 'member' ? '任務中心' : '管理後台'; ?> | Web3 Task Aggregator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -510,9 +527,10 @@ $shellUser = ['name' => $username, 'role' => $role];
     <?php require __DIR__ . '/includes/site_header.php'; ?>
 
     <main class="fade-in-up mx-auto w-full max-w-6xl space-y-8 px-4 py-10">
+        <?php $suppressErrorToast = false; ?>
         <?php if ($role === 'admin'): ?>
             <section class="rounded-3xl border border-white/10 bg-white/[0.04] p-8 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)]">
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">Admin / <?php echo $adminEditTask ? 'Edit Task' : 'Create Task'; ?></p>
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">管理後台 · <?php echo $adminEditTask ? '編輯任務' : '發布任務'; ?></p>
                 <h1 class="mt-3 text-2xl font-semibold tracking-tight text-white"><?php echo $adminEditTask ? '編輯任務' : '發布新任務'; ?></h1>
                 <p class="mt-2 text-sm text-zinc-300">請填公開摘要（首頁訪客可見）與完整說明；可自訂會員提交欄位。</p>
 
@@ -703,13 +721,13 @@ $shellUser = ['name' => $username, 'role' => $role];
                                         <input type="hidden" name="decision" value="approve">
                                         <button type="submit" class="rounded-full bg-emerald-400/90 px-4 py-2 text-sm font-semibold text-black hover:bg-emerald-300">核准</button>
                                     </form>
-                                    <form method="post" action="./dashboard.php" class="flex flex-wrap items-end gap-2">
+                                    <form method="post" action="./dashboard.php" class="flex w-full max-w-md flex-col gap-2 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-end">
                                         <input type="hidden" name="action" value="review_submission">
                                         <input type="hidden" name="submission_id" value="<?php echo (int) $pr['submission_id']; ?>">
                                         <input type="hidden" name="decision" value="reject">
                                         <label class="sr-only" for="rn<?php echo (int) $pr['submission_id']; ?>">駁回原因</label>
-                                        <input id="rn<?php echo (int) $pr['submission_id']; ?>" name="review_note" type="text" class="min-w-[12rem] rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white placeholder:text-zinc-500" placeholder="駁回原因（預設：與要求不符…）">
-                                        <button type="submit" class="rounded-full border border-rose-400/50 bg-rose-500/15 px-4 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-500/25">駁回</button>
+                                        <input id="rn<?php echo (int) $pr['submission_id']; ?>" name="review_note" type="text" class="min-w-0 w-full rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white placeholder:text-zinc-500 sm:min-w-[12rem] sm:w-auto sm:flex-1" placeholder="駁回原因（預設：與要求不符…）">
+                                        <button type="submit" class="shrink-0 rounded-full border border-rose-400/50 bg-rose-500/15 px-4 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-500/25">駁回</button>
                                     </form>
                                 </div>
                             </div>
@@ -757,12 +775,25 @@ $shellUser = ['name' => $username, 'role' => $role];
                 <?php endif; ?>
             </section>
         <?php else: ?>
+            <?php
+            $memberInlineError = '';
+            if ($role === 'member') {
+                $memberInlineError = $memberTaskFlashError !== '' ? $memberTaskFlashError : $error;
+            }
+            $suppressErrorToast = ($role === 'member' && $memberInlineError !== '');
+            ?>
             <section>
                 <div class="mb-8 border-b border-white/12 pb-5">
-                    <p class="text-xs uppercase tracking-[0.2em] text-amber-300">Member / Tasks</p>
+                    <p class="text-xs uppercase tracking-[0.2em] text-amber-300">會員 · 任務</p>
                     <h1 class="mt-2 text-3xl font-semibold tracking-tight text-white">可參與任務</h1>
                     <p class="mt-2 text-sm text-zinc-300">提交後需經項目方或管理員審核，通過後即視為完成。駁回時可重新提交，表單會嘗試帶入您上次填寫的內容（僅存於此裝置瀏覽器）。</p>
                 </div>
+
+                <?php if ($memberInlineError !== ''): ?>
+                    <div id="member-task-error-alert" class="mb-6 rounded-2xl border border-rose-400/40 bg-rose-950/50 px-4 py-3 text-sm font-medium text-rose-100" role="alert" tabindex="-1">
+                        <?php echo htmlspecialchars($memberInlineError); ?>
+                    </div>
+                <?php endif; ?>
 
                 <?php if (!empty($memberNotices)): ?>
                     <div class="mb-6 space-y-3">
@@ -806,7 +837,7 @@ $shellUser = ['name' => $username, 'role' => $role];
                             }
                             $timeLine = '開放提交（台灣時間）' . task_format_taipei_display($task['starts_at'] ?? '') . ' ～ ' . task_format_taipei_display($task['ends_at'] ?? '');
                             ?>
-                            <article class="group flex h-full flex-col rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-[0_15px_40px_-30px_rgba(0,0,0,0.9)] transition hover:-translate-y-0.5 hover:border-amber-300/45 hover:bg-white/[0.065]">
+                            <article id="task-<?php echo $tid; ?>" class="group scroll-mt-28 flex h-full flex-col rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-[0_15px_40px_-30px_rgba(0,0,0,0.9)] transition hover:-translate-y-0.5 hover:border-amber-300/45 hover:bg-white/[0.065]">
                                 <div class="flex flex-wrap items-center justify-between gap-2">
                                     <span class="rounded-full border border-amber-300/35 bg-amber-300/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-amber-200"><?php echo htmlspecialchars($task['category']); ?></span>
                                     <?php if (($task['task_status'] ?? '') === 'ended'): ?>
@@ -863,6 +894,10 @@ $shellUser = ['name' => $username, 'role' => $role];
                             <p id="w3fa-modal-summary" class="text-sm leading-relaxed text-zinc-300"></p>
                             <div id="w3fa-modal-meta" class="mt-3 space-y-1 text-xs text-zinc-500"></div>
                             <div id="w3fa-modal-description" class="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-zinc-200"></div>
+                            <div id="w3fa-draft-notice" class="mt-4 hidden rounded-xl border border-sky-400/35 bg-sky-950/50 px-3 py-2.5 text-sm text-sky-100" role="status">
+                                <span class="block pr-8">已載入此裝置上未送出的草稿，可繼續編輯後送出。</span>
+                                <button type="button" id="w3fa-draft-dismiss" class="mt-2 text-xs font-semibold text-sky-200 underline decoration-sky-400/60 underline-offset-2 hover:text-white">知道了</button>
+                            </div>
                             <form id="w3fa-modal-form" method="post" action="./dashboard.php" class="mt-6 space-y-4 border-t border-white/10 pt-6">
                                 <input type="hidden" name="action" value="complete_task">
                                 <input type="hidden" name="task_id" id="w3fa-modal-task-id" value="">
@@ -951,8 +986,12 @@ $shellUser = ['name' => $username, 'role' => $role];
             var coverWrap = document.getElementById('w3fa-modal-cover-wrap');
             var coverImg = document.getElementById('w3fa-modal-cover');
             var closeBtn = document.getElementById('w3fa-task-modal-close');
+            var draftNotice = document.getElementById('w3fa-draft-notice');
+            var draftDismiss = document.getElementById('w3fa-draft-dismiss');
             var draftTimer = null;
             var openTid = null;
+            var lastFocusEl = null;
+            var trapHandler = null;
 
             function readAll() {
                 try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; }
@@ -987,8 +1026,10 @@ $shellUser = ['name' => $username, 'role' => $role];
             function applyDraft(tid) {
                 var all = readAll();
                 var d = all[String(tid)];
-                if (!d || typeof d !== 'object') return;
-                Object.keys(d).forEach(function (k) {
+                if (!d || typeof d !== 'object') return false;
+                var keys = Object.keys(d);
+                if (keys.length === 0) return false;
+                keys.forEach(function (k) {
                     var el = fieldsRoot.querySelector('[name="response[' + k + ']"]');
                     if (!el) return;
                     if (el.type === 'checkbox') {
@@ -996,6 +1037,14 @@ $shellUser = ['name' => $username, 'role' => $role];
                     } else {
                         el.value = d[k];
                     }
+                });
+                return true;
+            }
+            function getModalFocusables() {
+                if (!modal || modal.classList.contains('hidden')) return [];
+                var sel = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled])';
+                return Array.prototype.slice.call(modal.querySelectorAll(sel)).filter(function (el) {
+                    return el.offsetParent !== null || (el.getClientRects && el.getClientRects().length > 0);
                 });
             }
             function buildFields(task) {
@@ -1085,21 +1134,51 @@ $shellUser = ['name' => $username, 'role' => $role];
                     coverImg.removeAttribute('src');
                 }
                 buildFields(task);
-                applyDraft(tid);
+                var hadDraft = applyDraft(tid);
+                if (draftNotice) {
+                    if (hadDraft) draftNotice.classList.remove('hidden');
+                    else draftNotice.classList.add('hidden');
+                }
+                lastFocusEl = document.activeElement;
                 modal.classList.remove('hidden');
                 modal.setAttribute('aria-hidden', 'false');
                 document.body.classList.add('w3fa-modal-open');
+                trapHandler = function (e) {
+                    if (e.key !== 'Tab') return;
+                    var list = getModalFocusables();
+                    if (list.length === 0) return;
+                    var first = list[0];
+                    var last = list[list.length - 1];
+                    if (e.shiftKey) {
+                        if (document.activeElement === first) {
+                            e.preventDefault();
+                            last.focus();
+                        }
+                    } else {
+                        if (document.activeElement === last) {
+                            e.preventDefault();
+                            first.focus();
+                        }
+                    }
+                };
+                modal.addEventListener('keydown', trapHandler);
                 setTimeout(function () {
-                    var f = fieldsRoot.querySelector('input, textarea');
+                    var f = fieldsRoot.querySelector('input, textarea, button');
                     if (f) f.focus();
                 }, 100);
             }
             function closeModal() {
                 saveDraft();
+                if (trapHandler && modal) modal.removeEventListener('keydown', trapHandler);
+                trapHandler = null;
                 modal.classList.add('hidden');
                 modal.setAttribute('aria-hidden', 'true');
                 document.body.classList.remove('w3fa-modal-open');
                 openTid = null;
+                if (lastFocusEl && typeof lastFocusEl.focus === 'function') {
+                    try { lastFocusEl.focus(); } catch (err) {}
+                }
+                lastFocusEl = null;
             }
             document.querySelectorAll('.w3fa-clear-task-ls[data-task-id]').forEach(function (el) {
                 var tid = el.getAttribute('data-task-id');
@@ -1129,6 +1208,19 @@ $shellUser = ['name' => $username, 'role' => $role];
             if (form) {
                 form.addEventListener('submit', function () {
                     saveDraft();
+                });
+            }
+            if (draftDismiss && draftNotice) {
+                draftDismiss.addEventListener('click', function () {
+                    draftNotice.classList.add('hidden');
+                });
+            }
+            if (location.hash && /^#task-\d+$/.test(location.hash)) {
+                requestAnimationFrame(function () {
+                    var card = document.querySelector(location.hash);
+                    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    var errEl = document.getElementById('member-task-error-alert');
+                    if (errEl) errEl.focus();
                 });
             }
         })();

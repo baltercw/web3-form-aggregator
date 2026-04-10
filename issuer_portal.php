@@ -309,7 +309,7 @@ function formatTaskDate(string $datetime): string
     if ($timestamp === false) {
         return $datetime;
     }
-    return date('M d, Y', $timestamp);
+    return date('Y/m/d', $timestamp);
 }
 
 $shellBreadcrumbs = [
@@ -419,12 +419,13 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                                                         <input type="hidden" name="decision" value="approve">
                                                         <button type="submit" class="rounded-full bg-emerald-400/90 px-3 py-1.5 text-xs font-semibold text-black hover:bg-emerald-300">核准</button>
                                                     </form>
-                                                    <form method="post" action="./issuer_portal.php?submissions=<?php echo (int) $submissionsTaskId; ?>" class="flex flex-col items-end gap-1">
+                                                    <form method="post" action="./issuer_portal.php?submissions=<?php echo (int) $submissionsTaskId; ?>" class="flex w-full max-w-xs flex-col gap-2 sm:max-w-none sm:items-end">
                                                         <input type="hidden" name="action" value="review_submission">
                                                         <input type="hidden" name="submission_id" value="<?php echo (int) $sr['submission_id']; ?>">
                                                         <input type="hidden" name="decision" value="reject">
-                                                        <input name="review_note" type="text" class="w-40 rounded-lg border border-white/15 bg-white/[0.06] px-2 py-1 text-xs text-white placeholder:text-zinc-500" placeholder="駁回原因">
-                                                        <button type="submit" class="rounded-full border border-rose-400/50 bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-200">駁回</button>
+                                                        <label class="sr-only" for="irn<?php echo (int) $sr['submission_id']; ?>">駁回原因</label>
+                                                        <input id="irn<?php echo (int) $sr['submission_id']; ?>" name="review_note" type="text" class="min-w-0 w-full rounded-lg border border-white/15 bg-white/[0.06] px-2 py-2 text-xs text-white placeholder:text-zinc-500 sm:w-48" placeholder="駁回原因">
+                                                        <button type="submit" class="shrink-0 self-stretch rounded-full border border-rose-400/50 bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-200 sm:self-end">駁回</button>
                                                     </form>
                                                 </div>
                                             <?php else: ?>
@@ -440,7 +441,7 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
             </section>
         <?php else: ?>
             <section class="rounded-3xl border border-white/10 bg-white/[0.04] p-8 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)]">
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">Issuer / <?php echo $editTask ? 'Edit Task' : 'New Task'; ?></p>
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">項目方 · <?php echo $editTask ? '編輯任務' : '新增任務'; ?></p>
                 <h1 class="mt-3 text-2xl font-semibold tracking-tight text-white"><?php echo $editTask ? '編輯任務' : '發布任務（活動）'; ?></h1>
                 <p class="mt-2 text-sm text-zinc-300">公開摘要會顯示在首頁給訪客；完整說明與自訂欄位在會員登入後於後台填寫。</p>
 
@@ -557,7 +558,7 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
 
             <section>
                 <div class="mb-6 border-b border-white/12 pb-5">
-                    <p class="text-xs uppercase tracking-[0.2em] text-amber-300">My Tasks</p>
+                    <p class="text-xs uppercase tracking-[0.2em] text-amber-300">我的任務</p>
                     <h2 class="mt-2 text-2xl font-semibold text-white">我發布的任務</h2>
                 </div>
                 <?php if (empty($myTasks)): ?>
