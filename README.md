@@ -140,6 +140,10 @@ Web3 任務表單整合平台（PHP + MySQL）。
     - `submissions`：會員提交紀錄
     - `member_notices`：會員通知
   - 內含一組 `admin` 與 `member` 測試帳號，以及一個範例任務
+- `seed_demo_data.sql`：
+  - **在既有 `group_09` 上匯入**（不會 DROP 資料庫）
+  - **保留** `admin`、`member` 帳號與密碼
+  - 清空並重建任務、提交、通知，並加入 8 筆示範任務與多筆審核狀態
 
 ---
 
@@ -163,7 +167,13 @@ Web3 任務表單整合平台（PHP + MySQL）。
    - 進入 phpMyAdmin 或 MySQL CLI，執行 `database.sql`
    - 注意：會直接 `DROP DATABASE group_09`，請勿在正式環境直接執行
 
-3. **設定資料庫連線**
+3. **（選用）匯入示範假資料**
+   - 若首頁任務太少、想測試篩選／名額／審核：在 phpMyAdmin 選 `group_09` → **匯入** → `seed_demo_data.sql`
+   - 可重複執行；會刪除舊任務與提交，但 **不會刪除** `admin`、`member`
+   - 也可用 MySQL CLI：  
+     `"C:\Myspace\Dev_Tools\xampp\mysql\bin\mysql.exe" -u root group_09 < seed_demo_data.sql`
+
+4. **設定資料庫連線**
    - 方式一：直接編輯 `db.php`
      - `DB_HOST`：預設 `127.0.0.1`
      - `DB_USER`：預設 `root`
@@ -172,7 +182,7 @@ Web3 任務表單整合平台（PHP + MySQL）。
    - 方式二：設定環境變數（適合部署環境）
      - `DB_HOST`、`DB_USER`、`DB_PASS`、`DB_NAME`
 
-4. **啟動伺服器**
+5. **啟動伺服器**
    - 使用 XAMPP Apache：將專案放在 `htdocs` 下，例如：  
      `C:\Myspace\Dev_Tools\xampp\htdocs\web3-form-aggregator`
    - 在瀏覽器開啟：  
@@ -208,10 +218,21 @@ Web3 任務表單整合平台（PHP + MySQL）。
 
 ## 測試帳號
 
-- 管理員：`admin` / `admin123456`
-- 會員：`member` / `member123456`
+**核心測試帳號（`database.sql` 與 `seed_demo_data.sql` 皆保留）**
 
-（如需額外的測試帳號，可直接在 `users` 表新增或在 UI 註冊後以管理員將角色調整為 `issuer` 或 `admin`。）
+| 帳號 | 密碼 | 角色 |
+|------|------|------|
+| `admin` | `admin123456` | 管理員 |
+| `member` | `member123456` | 會員 |
+
+**匯入 `seed_demo_data.sql` 後額外提供**
+
+| 帳號 | 密碼 | 角色 | 用途 |
+|------|------|------|------|
+| `issuer` | `issuer123456` | 項目方 | 測試 `issuer_portal.php` |
+| `demo1`～`demo4` | `demo123456` | 會員 | 示範名額已滿、多筆審核等 |
+
+（亦可於 UI 註冊後，由管理員在後台調整角色。）
 
 ---
 
