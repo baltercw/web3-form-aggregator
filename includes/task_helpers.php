@@ -108,3 +108,101 @@ function task_submission_gate(array $task, int $approvedCount, ?DateTimeImmutabl
         'approved_count' => $approvedCount,
     ];
 }
+
+/**
+ * 根據任務的 form_schema 推斷 web3 相關需求（目前專案沒有獨立 DB 欄位，因此以欄位 key 進行啟發式判斷）。
+ * 只用來做 UI 標籤，不影響後端審核流程。
+ *
+ * @param array<int, array<string, mixed>> $schemaFields
+ * @return array{wallet_input: bool, onchain: bool, kyc: bool}
+ */
+function task_web3_flags_from_schema(array $schemaFields): array
+{
+    $keys = [];
+    foreach ($schemaFields as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $k = isset($field['key']) ? (string) $field['key'] : '';
+        $k = trim($k);
+        if ($k !== '') {
+            $keys[] = $k;
+        }
+    }
+
+    $lower = array_map('strtolower', $keys);
+
+    $walletInput = false;
+    foreach ($lower as $k) {
+        if (
+            $k === 'wallet' ||
+            $k === 'wallet_address' ||
+            $k === 'address' ||
+            strpos($k, 'wallet') !== false ||
+            strpos($k, 'addr') !== false
+        ) {
+            $walletInput = true;
+            break;
+        }
+    }
+
+    $onchain = false;
+    foreach ($lower as $k) {
+        // 常見鏈上資料/簽章/交易雜湊欄位 key（用啟發式判斷）
+        if (
+            strpos($k, 'tx') !== false ||
+            strpos($k, 'transaction') !== false ||
+            strpos($k, 'hash') !== false ||
+            strpos($k, 'signature') !== false ||
+            strpos($k, 'sign') !== false ||
+            strpos($k, 'nonce') !== false ||
+            strpos($k, 'message') !== false ||
+            strpos($k, 'proof') !== false ||
+            strpos($k, 'onchain') !== false
+        ) {
+            $onchain = true;
+            break;
+        }
+    }
+
+    $kyc = false;
+    foreach ($lower as $k) {
+        if (
+            strpos($k, 'kyc') !== false ||
+            strpos($k, 'passport') !== false ||
+            strpos($k, 'document') !== false ||
+            strpos($k, 'selfie') !== false ||
+            strpos($k, 'verification') !== false ||
+            // 避免把一般 id 當作 KYC；但若 schema 真的用 id_doc 這類 key，仍能捕捉
+            (strpos($k, 'id') !== false && (strpos($k, 'doc') !== false || strpos($k, 'card') !== false || strpos($k, 'verify') !== false))
+        ) {
+            $kyc = true;
+            break;
+        }
+    }
+
+    return [
+        'wallet_input' => $walletInput,
+        'onchain' => $onchain,
+        'kyc' => $kyc,
+    ];
+}
+
+/**
+ * @param array<string, mixed> $task
+ * @return array{wallet_input: bool, onchain: bool, kyc: bool}
+ */
+function task_web3_flags_from_task(array $task): array
+{
+    $raw = $task['form_schema'] ?? null;
+    if (!is_string($raw) || trim($raw) === '') {
+        return ['wallet_input' => false, 'onchain' => false, 'kyc' => false];
+    }
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return ['wallet_input' => false, 'onchain' => false, 'kyc' => false];
+    }
+
+    // 這裡不強依賴 required 欄位的有無，只要 key 可用即可。
+    return task_web3_flags_from_schema($decoded);
+}

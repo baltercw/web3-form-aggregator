@@ -100,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->bind_param('ssssisssssi', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $schemaJson, $userId);
                 } else {
                     $stmt = $conn->prepare('INSERT INTO tasks (title, summary, description, cover_image_url, reward_xp, category, task_status, starts_at, ends_at, max_completions, form_schema, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                    $stmt->bind_param('ssssisssssisi', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $maxCompletions, $schemaJson, $userId);
+                    $stmt->bind_param('ssssissssisi', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $maxCompletions, $schemaJson, $userId);
                 }
                 if ($stmt->execute()) {
                     $message = '新任務已成功發布。';
@@ -145,7 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->bind_param('ssssisssssi', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $schemaJson, $taskId);
                 } else {
                     $stmt = $conn->prepare('UPDATE tasks SET title = ?, summary = ?, description = ?, cover_image_url = ?, reward_xp = ?, category = ?, task_status = ?, starts_at = ?, ends_at = ?, max_completions = ?, form_schema = ? WHERE id = ?');
-                    $stmt->bind_param('ssssisssssisi', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $maxCompletions, $schemaJson, $taskId);
+                    $stmt->bind_param('ssssissssisi', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $maxCompletions, $schemaJson, $taskId);
                 }
                 if ($stmt->execute()) {
                     $message = '任務已更新。';
@@ -472,6 +472,7 @@ if ($role === 'member') {
             'timeLine' => task_format_taipei_display($t['starts_at'] ?? '') . ' ～ ' . task_format_taipei_display($t['ends_at'] ?? ''),
             'quotaLine' => $ql,
             'schema' => $sch,
+            'web3' => task_web3_flags_from_schema($sch),
         ];
     }
     $memberTasksModalJson = json_encode($mp, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_UNICODE);
@@ -519,10 +520,7 @@ $shellUser = ['name' => $username, 'role' => $role];
     <?php require __DIR__ . '/includes/head_common.php'; ?>
 </head>
 <body class="min-h-screen bg-[#0b0b0b] text-zinc-100 antialiased selection:bg-amber-300/25 selection:text-white">
-    <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10">
-        <div class="absolute inset-0 bg-[radial-gradient(1000px_circle_at_14%_-15%,rgba(251,191,36,0.20),transparent_58%),radial-gradient(900px_circle_at_86%_0%,rgba(255,255,255,0.05),transparent_62%)]"></div>
-        <div class="absolute inset-0 opacity-25 [background-image:linear-gradient(to_right,rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.055)_1px,transparent_1px)] [background-size:60px_60px]"></div>
-    </div>
+    <?php $w3faBgVariant = 'subtle'; require __DIR__ . '/includes/background_decor.php'; ?>
 
     <?php require __DIR__ . '/includes/site_header.php'; ?>
 
@@ -534,65 +532,84 @@ $shellUser = ['name' => $username, 'role' => $role];
                 <h1 class="mt-3 text-2xl font-semibold tracking-tight text-white"><?php echo $adminEditTask ? '編輯任務' : '發布新任務'; ?></h1>
                 <p class="mt-2 text-sm text-zinc-300">請填公開摘要（首頁訪客可見）與完整說明；可自訂會員提交欄位。</p>
 
-                <form method="post" action="./dashboard.php<?php echo $adminEditTask ? '?edit=' . (int) $adminEditTask['id'] : ''; ?>" class="mt-6 space-y-4" id="admin-task-form">
+                <form method="post" action="./dashboard.php<?php echo $adminEditTask ? '?edit=' . (int) $adminEditTask['id'] : ''; ?>" class="mt-6 space-y-6" id="admin-task-form">
                     <input type="hidden" name="action" value="<?php echo $adminEditTask ? 'update_task' : 'create_task'; ?>">
                     <?php if ($adminEditTask): ?>
                         <input type="hidden" name="task_id" value="<?php echo (int) $adminEditTask['id']; ?>">
                     <?php endif; ?>
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-zinc-300" for="title">任務標題</label>
-                        <input id="title" name="title" type="text" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo $adminEditTask ? htmlspecialchars($adminEditTask['title']) : ''; ?>">
-                    </div>
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-zinc-300" for="summary">公開摘要</label>
-                        <textarea id="summary" name="summary" rows="2" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required><?php echo $adminEditTask ? htmlspecialchars($adminEditTask['summary']) : ''; ?></textarea>
-                    </div>
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-zinc-300" for="description">完整說明</label>
-                        <textarea id="description" name="description" rows="4" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required><?php echo $adminEditTask ? htmlspecialchars($adminEditTask['description']) : ''; ?></textarea>
-                    </div>
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-zinc-300" for="cover_image_url">封面圖網址（選填）</label>
-                        <input id="cover_image_url" name="cover_image_url" type="url" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" placeholder="https://…（會員填寫視窗頂部顯示）" value="<?php echo htmlspecialchars($adminTaskFormCover); ?>">
-                    </div>
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
                         <div>
-                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="reward_xp">獎勵 XP</label>
-                            <input id="reward_xp" name="reward_xp" type="number" min="0" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo $adminEditTask ? (int) $adminEditTask['reward_xp'] : '0'; ?>">
+                            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">基本資料</p>
+                            <p class="mt-1 text-sm text-zinc-400">首頁訪客看到的公開摘要 + 登入後可見的完整說明。</p>
                         </div>
+
                         <div>
-                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="category">分類</label>
-                            <input id="category" name="category" type="text" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo $adminEditTask ? htmlspecialchars($adminEditTask['category']) : ''; ?>">
+                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="title">任務標題</label>
+                            <input id="title" name="title" type="text" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo $adminEditTask ? htmlspecialchars($adminEditTask['title']) : ''; ?>">
+                        </div>
+
+                        <div>
+                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="summary">公開摘要</label>
+                            <textarea id="summary" name="summary" rows="2" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required><?php echo $adminEditTask ? htmlspecialchars($adminEditTask['summary']) : ''; ?></textarea>
+                        </div>
+
+                        <div>
+                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="description">完整說明</label>
+                            <textarea id="description" name="description" rows="4" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required><?php echo $adminEditTask ? htmlspecialchars($adminEditTask['description']) : ''; ?></textarea>
+                        </div>
+
+                        <div>
+                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="cover_image_url">封面圖網址（選填）</label>
+                            <input id="cover_image_url" name="cover_image_url" type="url" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" placeholder="https://…（會員填寫視窗頂部顯示）" value="<?php echo htmlspecialchars($adminTaskFormCover); ?>">
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <label class="mb-2 block text-sm font-medium text-zinc-300" for="reward_xp">獎勵 XP</label>
+                                <input id="reward_xp" name="reward_xp" type="number" min="0" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo $adminEditTask ? (int) $adminEditTask['reward_xp'] : '0'; ?>">
+                            </div>
+                            <div>
+                                <label class="mb-2 block text-sm font-medium text-zinc-300" for="category">分類</label>
+                                <input id="category" name="category" type="text" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo $adminEditTask ? htmlspecialchars($adminEditTask['category']) : ''; ?>">
+                            </div>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
                         <div>
-                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="starts_at">開始時間（台灣時間）</label>
-                            <input id="starts_at" name="starts_at" type="datetime-local" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo htmlspecialchars($adminTaskFormStarts); ?>">
+                            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">時間與名額</p>
+                            <p class="mt-1 text-sm text-zinc-400">設定開始/截止與核准名額上限，決定會員是否可提交。</p>
                         </div>
-                        <div>
-                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="ends_at">截止時間（台灣時間）</label>
-                            <input id="ends_at" name="ends_at" type="datetime-local" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo htmlspecialchars($adminTaskFormEnds); ?>">
+
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <label class="mb-2 block text-sm font-medium text-zinc-300" for="starts_at">開始時間（台灣時間）</label>
+                                <input id="starts_at" name="starts_at" type="datetime-local" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo htmlspecialchars($adminTaskFormStarts); ?>">
+                            </div>
+                            <div>
+                                <label class="mb-2 block text-sm font-medium text-zinc-300" for="ends_at">截止時間（台灣時間）</label>
+                                <input id="ends_at" name="ends_at" type="datetime-local" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo htmlspecialchars($adminTaskFormEnds); ?>">
+                            </div>
                         </div>
-                    </div>
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="task_status">任務狀態</label>
-                            <select id="task_status" name="task_status" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50">
-                                <option value="published" <?php echo $adminTaskFormStatus === 'published' ? 'selected' : ''; ?>>已發布（首頁顯示，依時間與名額開放提交）</option>
-                                <option value="ended" <?php echo $adminTaskFormStatus === 'ended' ? 'selected' : ''; ?>>已結束（首頁仍顯示，不可提交）</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="mb-2 block text-sm font-medium text-zinc-300" for="max_completions">核准名額上限（選填）</label>
-                            <input id="max_completions" name="max_completions" type="number" min="1" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" placeholder="留空＝不限名額" value="<?php echo htmlspecialchars($adminTaskFormMax); ?>">
+
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <label class="mb-2 block text-sm font-medium text-zinc-300" for="task_status">任務狀態</label>
+                                <select id="task_status" name="task_status" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50">
+                                    <option value="published" <?php echo $adminTaskFormStatus === 'published' ? 'selected' : ''; ?>>已發布（首頁顯示，依時間與名額開放提交）</option>
+                                    <option value="ended" <?php echo $adminTaskFormStatus === 'ended' ? 'selected' : ''; ?>>已結束（首頁仍顯示，不可提交）</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="mb-2 block text-sm font-medium text-zinc-300" for="max_completions">核准名額上限（選填）</label>
+                                <input id="max_completions" name="max_completions" type="number" min="1" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" placeholder="留空＝不限名額" value="<?php echo htmlspecialchars($adminTaskFormMax); ?>">
+                            </div>
                         </div>
                     </div>
 
-                    <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                        <p class="text-sm font-medium text-white">會員完成任務時要填的欄位</p>
-                        <p class="mt-1 text-xs text-zinc-500">類型含單行、多行、網址、Email、勾選；可設定必填／選填。</p>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">表單欄位設定</p>
+                        <p class="mt-2 text-sm text-zinc-400">會員完成任務時要填的欄位（可設定必填／選填）。</p>
                         <div id="admin-field-rows" class="mt-4 space-y-3">
                             <?php foreach ($adminSchemaFields as $f): ?>
                                 <?php
@@ -641,6 +658,28 @@ $shellUser = ['name' => $username, 'role' => $role];
                         <?php endif; ?>
                     </div>
                 </form>
+
+                <div id="admin-confirm-modal" class="fixed inset-0 z-[95] hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="admin-confirm-title">
+                    <div id="admin-confirm-backdrop" class="absolute inset-0 bg-black/70 backdrop-blur-md"></div>
+                    <div class="pointer-events-none absolute inset-0 flex items-end justify-center p-0 md:items-center md:p-4">
+                        <div class="pointer-events-auto w-full max-w-xl rounded-t-3xl border border-white/15 bg-[#101010] shadow-2xl md:rounded-3xl">
+                            <div class="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-4 md:px-6">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-medium uppercase tracking-wider text-amber-300/90">總覽</p>
+                                    <h3 id="admin-confirm-title" class="mt-1 text-lg font-semibold text-white"></h3>
+                                </div>
+                                <button type="button" id="admin-confirm-cancel" class="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-white/10">取消</button>
+                            </div>
+                            <div class="px-4 py-4 md:px-6">
+                                <div id="admin-confirm-summary" class="space-y-2 text-sm text-zinc-300"></div>
+                                <p class="mt-3 text-[11px] text-zinc-500">確認後將送出表單並更新任務資訊。</p>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-4 py-3 md:px-6">
+                                <button type="button" id="admin-confirm-proceed" class="rounded-full bg-amber-300 px-5 py-2 text-sm font-semibold text-black transition hover:bg-amber-200">確認送出</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <section class="rounded-3xl border border-white/10 bg-white/[0.04] p-8">
@@ -836,25 +875,49 @@ $shellUser = ['name' => $username, 'role' => $role];
                                 $quotaLine = '核准名額不限（目前已核准 ' . $approvedCount . '）';
                             }
                             $timeLine = '開放提交（台灣時間）' . task_format_taipei_display($task['starts_at'] ?? '') . ' ～ ' . task_format_taipei_display($task['ends_at'] ?? '');
+
+                            $web3 = task_web3_flags_from_schema($schema);
+                            $walletTag = $web3['wallet_input'] ? '錢包連接：不需要（可能需填地址）' : '錢包連接：不需要';
+                            $onchainTag = 'On-chain：' . ($web3['onchain'] ? '需要' : '不需要');
+                            $kycTag = 'KYC：' . ($web3['kyc'] ? '需要' : '不需要');
                             ?>
                             <article id="task-<?php echo $tid; ?>" class="group scroll-mt-28 flex h-full flex-col rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-[0_15px_40px_-30px_rgba(0,0,0,0.9)] transition hover:-translate-y-0.5 hover:border-amber-300/45 hover:bg-white/[0.065]">
                                 <div class="flex flex-wrap items-center justify-between gap-2">
                                     <span class="rounded-full border border-amber-300/35 bg-amber-300/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-amber-200"><?php echo htmlspecialchars($task['category']); ?></span>
                                     <?php if (($task['task_status'] ?? '') === 'ended'): ?>
                                         <span class="rounded-full border border-zinc-500/50 bg-zinc-800/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-200">已結束</span>
+                                    <?php else: ?>
+                                        <?php if ($gate['can_submit']): ?>
+                                            <span class="rounded-full border border-emerald-400/45 bg-emerald-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-100">開放提交</span>
+                                        <?php else: ?>
+                                            <span class="rounded-full border-2 border-rose-500/70 bg-rose-950/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-100">不可提交</span>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </div>
                                 <h2 class="mt-5 text-xl font-semibold leading-snug tracking-tight text-white"><?php echo htmlspecialchars($task['title']); ?></h2>
                                 <p class="mt-2 text-xs leading-relaxed text-zinc-500"><?php echo htmlspecialchars($timeLine); ?></p>
-                                <p class="mt-1 text-xs font-medium text-amber-200/90"><?php echo htmlspecialchars($quotaLine); ?></p>
+
+                                <div class="mt-3 flex flex-wrap items-center gap-2">
+                                    <span class="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs text-zinc-300"><?php echo htmlspecialchars($quotaLine); ?></span>
+                                    <span class="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1 text-xs font-semibold text-amber-200">+<?php echo (int) $task['reward_xp']; ?> XP</span>
+                                </div>
+
                                 <?php if (!$gate['can_submit'] && !$pending && !$approved): ?>
                                     <div class="mt-3 rounded-xl border border-rose-500/45 bg-rose-950/60 px-3 py-2 text-xs font-semibold text-rose-100">
                                         目前不可提交<?php if (!empty($gate['block_labels'])): ?>：<?php echo htmlspecialchars(implode('；', $gate['block_labels'])); ?><?php endif; ?>
                                     </div>
                                 <?php endif; ?>
-                                <p class="mt-3 flex-1 text-sm leading-relaxed text-zinc-300"><?php echo nl2br(htmlspecialchars($task['description'])); ?></p>
+
+                                <p class="mt-3 text-sm leading-relaxed text-zinc-300"><?php echo nl2br(htmlspecialchars($task['description'])); ?></p>
+
+                                <div class="mt-4 flex flex-wrap gap-2">
+                                    <span class="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-zinc-200"><?php echo htmlspecialchars($walletTag); ?></span>
+                                    <span class="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-zinc-200"><?php echo htmlspecialchars($onchainTag); ?></span>
+                                    <span class="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-zinc-200"><?php echo htmlspecialchars($kycTag); ?></span>
+                                </div>
+                                <p class="mt-2 text-[11px] text-zinc-500">此任務不會要求你簽署交易、不會要求私鑰。</p>
+
                                 <div class="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-                                    <span class="text-base font-semibold text-amber-200">+<?php echo (int) $task['reward_xp']; ?> XP</span>
                                     <div class="w-full space-y-3">
                                         <?php if ($approved): ?>
                                             <span class="text-sm font-semibold text-emerald-300">已通過審核</span>
@@ -888,19 +951,31 @@ $shellUser = ['name' => $username, 'role' => $role];
                             <button type="button" id="w3fa-task-modal-close" class="shrink-0 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-white/10">關閉</button>
                         </div>
                         <div id="w3fa-modal-scroll" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-3 md:px-6 md:pb-6 md:pt-4">
-                            <div id="w3fa-modal-cover-wrap" class="mb-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30">
-                                <img id="w3fa-modal-cover" src="" alt="" class="max-h-56 w-full object-cover md:max-h-72">
+                            <div class="mb-6 rounded-2xl border border-white/10 bg-white/[0.02] p-4 md:p-5">
+                                <p class="text-xs font-medium uppercase tracking-wider text-amber-300/90">任務介紹</p>
+
+                                <div id="w3fa-modal-cover-wrap" class="mt-3 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+                                    <img id="w3fa-modal-cover" src="" alt="" class="max-h-56 w-full object-cover md:max-h-72">
+                                </div>
+                                <p id="w3fa-modal-summary" class="mt-3 text-sm leading-relaxed text-zinc-300"></p>
+                                <div id="w3fa-modal-meta" class="mt-3 space-y-1 text-xs text-zinc-500"></div>
+                                <div id="w3fa-modal-web3-tags" class="mt-3 flex flex-wrap gap-2"></div>
+                                <p id="w3fa-modal-web3-note" class="mt-2 text-[11px] text-zinc-500">此任務不會要求你簽署交易、不會要求私鑰。</p>
+                                <div id="w3fa-modal-description" class="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-zinc-200"></div>
                             </div>
-                            <p id="w3fa-modal-summary" class="text-sm leading-relaxed text-zinc-300"></p>
-                            <div id="w3fa-modal-meta" class="mt-3 space-y-1 text-xs text-zinc-500"></div>
-                            <div id="w3fa-modal-description" class="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-zinc-200"></div>
+
                             <div id="w3fa-draft-notice" class="mt-4 hidden rounded-xl border border-sky-400/35 bg-sky-950/50 px-3 py-2.5 text-sm text-sky-100" role="status">
                                 <span class="block pr-8">已載入此裝置上未送出的草稿，可繼續編輯後送出。</span>
                                 <button type="button" id="w3fa-draft-dismiss" class="mt-2 text-xs font-semibold text-sky-200 underline decoration-sky-400/60 underline-offset-2 hover:text-white">知道了</button>
                             </div>
-                            <form id="w3fa-modal-form" method="post" action="./dashboard.php" class="mt-6 space-y-4 border-t border-white/10 pt-6">
+                            <form id="w3fa-modal-form" method="post" action="./dashboard.php" class="space-y-4">
                                 <input type="hidden" name="action" value="complete_task">
                                 <input type="hidden" name="task_id" id="w3fa-modal-task-id" value="">
+
+                                <div class="border-t border-white/10 pt-5">
+                                    <p class="text-xs font-medium uppercase tracking-wider text-amber-300/90">填寫欄位</p>
+                                </div>
+
                                 <div id="w3fa-modal-fields" class="space-y-4"></div>
                                 <button type="submit" class="w-full rounded-full bg-amber-300 py-3 text-sm font-semibold text-black transition hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200">送出審核</button>
                             </form>
@@ -964,6 +1039,72 @@ $shellUser = ['name' => $username, 'role' => $role];
                 c.appendChild(row);
                 bind(row);
             });
+
+            var form = document.getElementById('admin-task-form');
+            var modal = document.getElementById('admin-confirm-modal');
+            var cancelBtn = document.getElementById('admin-confirm-cancel');
+            var proceedBtn = document.getElementById('admin-confirm-proceed');
+            var summaryEl = document.getElementById('admin-confirm-summary');
+            if (!form || !modal || !cancelBtn || !proceedBtn || !summaryEl) return;
+
+            function showModal(lines) {
+                summaryEl.innerHTML = '';
+                lines.forEach(function (t) {
+                    var div = document.createElement('div');
+                    div.textContent = t;
+                    summaryEl.appendChild(div);
+                });
+                modal.classList.remove('hidden');
+                modal.setAttribute('aria-hidden', 'false');
+            }
+
+            function hideModal() {
+                modal.classList.add('hidden');
+                modal.setAttribute('aria-hidden', 'true');
+            }
+
+            form.addEventListener('submit', function (e) {
+                // 避免使用者在「確認送出」後又被攔截
+                if (form.dataset.confirmed === '1') return;
+                e.preventDefault();
+                var title = document.getElementById('title') ? document.getElementById('title').value.trim() : '';
+                var rewardXp = document.getElementById('reward_xp') ? document.getElementById('reward_xp').value.trim() : '';
+                var startsAt = document.getElementById('starts_at') ? document.getElementById('starts_at').value.trim() : '';
+                var endsAt = document.getElementById('ends_at') ? document.getElementById('ends_at').value.trim() : '';
+                var maxCompletions = document.getElementById('max_completions') ? document.getElementById('max_completions').value.trim() : '';
+                var statusVal = document.getElementById('task_status') ? document.getElementById('task_status').value : '';
+                var statusText = statusVal === 'ended' ? '已結束（不可提交）' : '已發布（可依時間與名額開放提交）';
+                var maxText = maxCompletions === '' ? '不限名額' : ('上限 ' + maxCompletions);
+                var startsText = startsAt ? startsAt.replace('T', ' ') : '';
+                var endsText = endsAt ? endsAt.replace('T', ' ') : '';
+
+                var lines = [
+                    '任務標題：' + (title || '—'),
+                    '獎勵 XP：' + (rewardXp || '0'),
+                    '時間：' + (startsText || '—') + ' ～ ' + (endsText || '—'),
+                    '名額：' + maxText,
+                    '狀態：' + statusText
+                ];
+                showModal(lines);
+            });
+
+            cancelBtn.addEventListener('click', function () {
+                hideModal();
+            });
+
+            proceedBtn.addEventListener('click', function () {
+                form.dataset.confirmed = '1';
+                hideModal();
+                form.submit();
+            });
+
+            var backdrop = document.getElementById('admin-confirm-backdrop');
+            if (backdrop) backdrop.addEventListener('click', function () { hideModal(); });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+                    hideModal();
+                }
+            });
         })();
     </script>
     <?php endif; ?>
@@ -982,6 +1123,8 @@ $shellUser = ['name' => $username, 'role' => $role];
             var titleEl = document.getElementById('w3fa-modal-title');
             var summaryEl = document.getElementById('w3fa-modal-summary');
             var metaEl = document.getElementById('w3fa-modal-meta');
+            var web3TagsEl = document.getElementById('w3fa-modal-web3-tags');
+            var web3NoteEl = document.getElementById('w3fa-modal-web3-note');
             var descEl = document.getElementById('w3fa-modal-description');
             var coverWrap = document.getElementById('w3fa-modal-cover-wrap');
             var coverImg = document.getElementById('w3fa-modal-cover');
@@ -1088,6 +1231,10 @@ $shellUser = ['name' => $username, 'role' => $role];
                         row.appendChild(input);
                         row.appendChild(span);
                         wrap.appendChild(row);
+                        var helper = document.createElement('p');
+                        helper.className = 'mt-2 text-xs text-zinc-500';
+                        helper.textContent = '勾選代表同意活動條款';
+                        wrap.appendChild(helper);
                         input.id = lid;
                         input.name = 'response[' + k + ']';
                         fieldsRoot.appendChild(wrap);
@@ -1123,6 +1270,28 @@ $shellUser = ['name' => $username, 'role' => $role];
                 metaEl.appendChild(m1);
                 metaEl.appendChild(m2);
                 metaEl.appendChild(m3);
+
+                if (web3TagsEl) {
+                    web3TagsEl.innerHTML = '';
+                    var w = task.web3 || {};
+                    var walletTag = w.wallet_input ? '錢包連接：不需要（可能需填地址）' : '錢包連接：不需要';
+                    var onchainTag = 'On-chain：' + (w.onchain ? '需要' : '不需要');
+                    var kycTag = 'KYC：' + (w.kyc ? '需要' : '不需要');
+
+                    function chip(txt) {
+                        var s = document.createElement('span');
+                        s.className = 'rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-zinc-200';
+                        s.textContent = txt;
+                        return s;
+                    }
+                    web3TagsEl.appendChild(chip(walletTag));
+                    web3TagsEl.appendChild(chip(onchainTag));
+                    web3TagsEl.appendChild(chip(kycTag));
+                }
+                if (web3NoteEl) {
+                    web3NoteEl.textContent = '此任務不會要求你簽署交易、不會要求私鑰。';
+                }
+
                 descEl.textContent = task.description || '';
                 if (task.cover && /^https?:\/\//i.test(task.cover)) {
                     coverImg.src = task.cover;

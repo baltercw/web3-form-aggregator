@@ -15,6 +15,7 @@ if (is_array($shellUser) && isset($shellUser['role'])) {
     $r0 = (string) $shellUser['role'];
     $shellRoleLabel = $shellRoleLabels[$r0] ?? $r0;
 }
+$shellAdmin = is_array($shellUser) && (($shellUser['role'] ?? '') === 'admin');
 ?>
 <header class="sticky top-0 z-30 border-b border-white/10 bg-[#0b0b0b]/95 backdrop-blur">
     <div class="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 md:py-4">
@@ -64,6 +65,9 @@ if (is_array($shellUser) && isset($shellUser['role'])) {
                         <span class="tracking-wide text-amber-200/90"><?php echo htmlspecialchars($shellRoleLabel); ?></span>
                     </span>
                 <?php endif; ?>
+                <?php if ($shellAdmin): ?>
+                    <a href="./admin_stats.php" class="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40">資料統計</a>
+                <?php endif; ?>
                 <a href="./index.php" class="rounded-full border border-amber-300/35 bg-amber-200/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-200/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60">首頁</a>
                 <a href="./login.php?action=logout" class="rounded-full border border-transparent px-4 py-2 text-sm font-medium text-zinc-300 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40">登出</a>
             <?php endif; ?>
@@ -100,6 +104,9 @@ if (is_array($shellUser) && isset($shellUser['role'])) {
                 <?php endif; ?>
                 <a href="./login.php?action=logout" class="rounded-xl px-3 py-3 text-sm font-medium text-zinc-300 hover:bg-white/10">登出</a>
             <?php elseif ($shellPage === 'auth_dashboard' || $shellPage === 'auth_issuer'): ?>
+                <?php if ($shellAdmin): ?>
+                    <a href="./admin_stats.php" class="rounded-xl px-3 py-3 text-sm font-medium text-white hover:bg-white/10">資料統計</a>
+                <?php endif; ?>
                 <a href="./index.php" class="rounded-xl px-3 py-3 text-sm font-medium text-amber-200 hover:bg-white/10">首頁</a>
                 <a href="./login.php?action=logout" class="rounded-xl px-3 py-3 text-sm font-medium text-zinc-300 hover:bg-white/10">登出</a>
             <?php endif; ?>

@@ -87,10 +87,7 @@ $suppressErrorToast = true;
     <?php require __DIR__ . '/includes/head_common.php'; ?>
 </head>
 <body class="min-h-screen bg-[#0b0b0b] text-zinc-100 antialiased selection:bg-amber-300/25 selection:text-white">
-    <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10">
-        <div class="absolute inset-0 bg-[radial-gradient(1000px_circle_at_14%_-15%,rgba(251,191,36,0.20),transparent_58%),radial-gradient(900px_circle_at_86%_0%,rgba(255,255,255,0.05),transparent_62%)]"></div>
-        <div class="absolute inset-0 opacity-25 [background-image:linear-gradient(to_right,rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.055)_1px,transparent_1px)] [background-size:60px_60px]"></div>
-    </div>
+    <?php $w3faBgVariant = 'subtle'; require __DIR__ . '/includes/background_decor.php'; ?>
 
     <?php
     $shellPage = 'guest_register';

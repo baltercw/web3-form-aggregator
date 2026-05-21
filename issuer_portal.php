@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->bind_param('ssssisssssi', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $schemaJson, $userId);
                 } else {
                     $stmt = $conn->prepare('INSERT INTO tasks (title, summary, description, cover_image_url, reward_xp, category, task_status, starts_at, ends_at, max_completions, form_schema, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                    $stmt->bind_param('ssssisssssisi', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $maxCompletions, $schemaJson, $userId);
+                    $stmt->bind_param('ssssissssisi', $title, $summary, $description, $coverBind, $rewardXp, $category, $taskStatus, $startsAt, $endsAt, $maxCompletions, $schemaJson, $userId);
                 }
                 if ($stmt->execute()) {
                     $message = '任務已發布。';
@@ -278,7 +278,12 @@ if ($submissionsTaskId > 0) {
 }
 
 $myTasks = [];
-$mt = $conn->prepare('SELECT id, title, summary, reward_xp, category, task_status, starts_at, ends_at, max_completions, created_at FROM tasks WHERE created_by = ? ORDER BY created_at DESC');
+$mt = $conn->prepare(
+    "SELECT t.id, t.title, t.summary, t.reward_xp, t.category, t.task_status, t.starts_at, t.ends_at, t.max_completions, t.created_at, "
+    . "(SELECT COUNT(*) FROM submissions s WHERE s.task_id = t.id) AS submission_count, "
+    . "(SELECT COUNT(*) FROM submissions s2 WHERE s2.task_id = t.id AND s2.status = 'approved') AS approved_count "
+    . 'FROM tasks t WHERE t.created_by = ? ORDER BY t.created_at DESC'
+);
 $mt->bind_param('i', $userId);
 $mt->execute();
 $mtr = $mt->get_result();
@@ -348,10 +353,7 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
     <?php require __DIR__ . '/includes/head_common.php'; ?>
 </head>
 <body class="min-h-screen bg-[#0b0b0b] text-zinc-100 antialiased selection:bg-amber-300/25 selection:text-white">
-    <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10">
-        <div class="absolute inset-0 bg-[radial-gradient(1000px_circle_at_14%_-15%,rgba(251,191,36,0.20),transparent_58%),radial-gradient(900px_circle_at_86%_0%,rgba(255,255,255,0.05),transparent_62%)]"></div>
-        <div class="absolute inset-0 opacity-25 [background-image:linear-gradient(to_right,rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.055)_1px,transparent_1px)] [background-size:60px_60px]"></div>
-    </div>
+    <?php $w3faBgVariant = 'subtle'; require __DIR__ . '/includes/background_decor.php'; ?>
 
     <?php require __DIR__ . '/includes/site_header.php'; ?>
 
@@ -445,11 +447,12 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                 <h1 class="mt-3 text-2xl font-semibold tracking-tight text-white"><?php echo $editTask ? '編輯任務' : '發布任務（活動）'; ?></h1>
                 <p class="mt-2 text-sm text-zinc-300">公開摘要會顯示在首頁給訪客；完整說明與自訂欄位在會員登入後於後台填寫。</p>
 
-                <form method="post" action="./issuer_portal.php<?php echo $editTask ? '?edit=' . (int) $editTask['id'] : ''; ?>" class="mt-6 space-y-4" id="issuer-task-form">
+                <form method="post" action="./issuer_portal.php<?php echo $editTask ? '?edit=' . (int) $editTask['id'] : ''; ?>" class="mt-6 space-y-6" id="issuer-task-form">
                     <input type="hidden" name="action" value="<?php echo $editTask ? 'update_task' : 'create_task'; ?>">
                     <?php if ($editTask): ?>
                         <input type="hidden" name="task_id" value="<?php echo (int) $editTask['id']; ?>">
                     <?php endif; ?>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
                     <div>
                         <label class="mb-2 block text-sm font-medium text-zinc-300" for="title">任務標題</label>
                         <input id="title" name="title" type="text" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" required value="<?php echo $editTask ? htmlspecialchars($editTask['title']) : ''; ?>">
@@ -477,6 +480,9 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                         </div>
                     </div>
 
+                    </div>
+
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
                     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div>
                             <label class="mb-2 block text-sm font-medium text-zinc-300" for="starts_at">開始時間（台灣時間）</label>
@@ -500,9 +506,11 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                             <input id="max_completions" name="max_completions" type="number" min="1" class="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-zinc-500 focus:border-amber-300/40 focus:outline-none focus:ring-2 focus:ring-amber-300/50" placeholder="留空＝不限名額" value="<?php echo htmlspecialchars($issuerTaskFormMax); ?>">
                         </div>
                     </div>
+                    </div>
 
-                    <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                        <p class="text-sm font-medium text-white">會員完成任務時要填的欄位</p>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">表單欄位設定</p>
+                        <p class="mt-2 text-sm text-zinc-400">會員完成任務時要填的欄位</p>
                         <p class="mt-1 text-xs text-zinc-500">類型含單行、多行、網址、Email、勾選；可設定必填／選填。欄位代碼僅能使用英文、數字、底線。</p>
                         <div id="field-rows" class="mt-4 space-y-3">
                             <?php if (!empty($schemaFields)): ?>
@@ -554,6 +562,28 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                         <?php endif; ?>
                     </div>
                 </form>
+
+                <div id="issuer-confirm-modal" class="fixed inset-0 z-[95] hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="issuer-confirm-title">
+                    <div id="issuer-confirm-backdrop" class="absolute inset-0 bg-black/70 backdrop-blur-md"></div>
+                    <div class="pointer-events-none absolute inset-0 flex items-end justify-center p-0 md:items-center md:p-4">
+                        <div class="pointer-events-auto w-full max-w-xl rounded-t-3xl border border-white/15 bg-[#101010] shadow-2xl md:rounded-3xl">
+                            <div class="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-4 md:px-6">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-medium uppercase tracking-wider text-amber-300/90">總覽</p>
+                                    <h3 id="issuer-confirm-title" class="mt-1 text-lg font-semibold text-white"></h3>
+                                </div>
+                                <button type="button" id="issuer-confirm-cancel" class="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-white/10">取消</button>
+                            </div>
+                            <div class="px-4 py-4 md:px-6">
+                                <div id="issuer-confirm-summary" class="space-y-2 text-sm text-zinc-300"></div>
+                                <p class="mt-3 text-[11px] text-zinc-500">確認後將送出表單並更新任務狀態與公開資訊。</p>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 px-4 py-3 md:px-6">
+                                <button type="button" id="issuer-confirm-proceed" class="rounded-full bg-amber-300 px-5 py-2 text-sm font-semibold text-black transition hover:bg-amber-200">確認送出</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <section>
@@ -571,6 +601,7 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                                     <th class="px-4 py-3">標題</th>
                                     <th class="px-4 py-3">分類</th>
                                     <th class="px-4 py-3">XP</th>
+                                    <th class="px-4 py-3">提交統計</th>
                                     <th class="px-4 py-3">建立</th>
                                     <th class="px-4 py-3 text-right">操作</th>
                                 </tr>
@@ -581,9 +612,16 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                                         <td class="px-4 py-3 font-medium text-white"><?php echo htmlspecialchars($t['title']); ?></td>
                                         <td class="px-4 py-3"><?php echo htmlspecialchars($t['category']); ?></td>
                                         <td class="px-4 py-3"><?php echo (int) $t['reward_xp']; ?></td>
+                                        <td class="px-4 py-3 text-xs text-zinc-300">
+                                            <?php
+                                            $totalSubs = (int) ($t['submission_count'] ?? 0);
+                                            $approvedSubs = (int) ($t['approved_count'] ?? 0);
+                                            ?>
+                                            總提交 <?php echo $totalSubs; ?> ／ 已核准 <?php echo $approvedSubs; ?>
+                                        </td>
                                         <td class="px-4 py-3 text-zinc-500"><?php echo htmlspecialchars(formatTaskDate($t['created_at'])); ?></td>
                                         <td class="px-4 py-3 text-right">
-                                            <a class="text-amber-200 hover:text-amber-100" href="./issuer_portal.php?submissions=<?php echo (int) $t['id']; ?>">提交紀錄</a>
+                                            <a class="text-amber-200 hover:text-amber-100" href="./issuer_portal.php?submissions=<?php echo (int) $t['id']; ?>">提交紀錄（<?php echo $totalSubs; ?>）</a>
                                             <span class="text-zinc-600"> · </span>
                                             <a class="text-amber-200 hover:text-amber-100" href="./issuer_portal.php?edit=<?php echo (int) $t['id']; ?>">編輯</a>
                                             <span class="text-zinc-600"> · </span>
@@ -657,6 +695,74 @@ $shellUser = ['name' => $username, 'role' => 'issuer'];
                 var row = node.querySelector('.field-row');
                 container.appendChild(row);
                 bindRemove(row);
+            });
+        })();
+    </script>
+
+    <script>
+        (function () {
+            var form = document.getElementById('issuer-task-form');
+            var modal = document.getElementById('issuer-confirm-modal');
+            var cancelBtn = document.getElementById('issuer-confirm-cancel');
+            var proceedBtn = document.getElementById('issuer-confirm-proceed');
+            var summaryEl = document.getElementById('issuer-confirm-summary');
+            if (!form || !modal || !cancelBtn || !proceedBtn || !summaryEl) return;
+
+            function showModal(lines) {
+                summaryEl.innerHTML = '';
+                lines.forEach(function (t) {
+                    var div = document.createElement('div');
+                    div.textContent = t;
+                    summaryEl.appendChild(div);
+                });
+                modal.classList.remove('hidden');
+                modal.setAttribute('aria-hidden', 'false');
+            }
+
+            function hideModal() {
+                modal.classList.add('hidden');
+                modal.setAttribute('aria-hidden', 'true');
+            }
+
+            form.addEventListener('submit', function (e) {
+                if (form.dataset.confirmed === '1') return;
+                e.preventDefault();
+
+                var title = document.getElementById('title') ? document.getElementById('title').value.trim() : '';
+                var rewardXp = document.getElementById('reward_xp') ? document.getElementById('reward_xp').value.trim() : '';
+                var startsAt = document.getElementById('starts_at') ? document.getElementById('starts_at').value.trim() : '';
+                var endsAt = document.getElementById('ends_at') ? document.getElementById('ends_at').value.trim() : '';
+                var maxCompletions = document.getElementById('max_completions') ? document.getElementById('max_completions').value.trim() : '';
+                var statusVal = document.getElementById('task_status') ? document.getElementById('task_status').value : '';
+
+                var statusText = statusVal === 'ended' ? '已結束（不可提交）' : '已發布';
+                var maxText = maxCompletions === '' ? '不限名額' : ('上限 ' + maxCompletions);
+                var startsText = startsAt ? startsAt.replace('T', ' ') : '';
+                var endsText = endsAt ? endsAt.replace('T', ' ') : '';
+
+                var lines = [
+                    '任務標題：' + (title || '—'),
+                    '獎勵 XP：' + (rewardXp || '0'),
+                    '時間：' + (startsText || '—') + ' ～ ' + (endsText || '—'),
+                    '名額：' + maxText,
+                    '狀態：' + statusText
+                ];
+                showModal(lines);
+            });
+
+            cancelBtn.addEventListener('click', function () { hideModal(); });
+            proceedBtn.addEventListener('click', function () {
+                form.dataset.confirmed = '1';
+                hideModal();
+                form.submit();
+            });
+
+            var backdrop = document.getElementById('issuer-confirm-backdrop');
+            if (backdrop) backdrop.addEventListener('click', function () { hideModal(); });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+                    hideModal();
+                }
             });
         })();
     </script>

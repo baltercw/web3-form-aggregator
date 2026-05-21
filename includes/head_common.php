@@ -22,4 +22,11 @@
         from { opacity: 0; transform: translateY(8px) scale(0.98); }
         to { opacity: 1; transform: translateY(0) scale(1); }
     }
+    /* Windows/Chrome 下拉選單常出現白底白字，統一指定 option 顏色 */
+    select,
+    option,
+    optgroup {
+        color: #f4f4f5;
+        background-color: #18181b;
+    }
 </style>
