@@ -1,8 +1,10 @@
-# Web3 Form Aggregator
+# Web3 Form Aggregator（group_09）
 
 Web3 任務表單整合平台（PHP + MySQL）。  
 聚合多種任務，提供訪客瀏覽、會員提交、管理員審核、項目方管理的完整流程，並在 UI 上強調 web3 使用者的安全感與透明度。
 
+**組別資料夾：** `group_09`  
+**資料庫：** `group_09`（帳號/密碼：`root` / `root123456`）
 ---
 
 ## 我已完成的功能
@@ -128,22 +130,13 @@ Web3 任務表單整合平台（PHP + MySQL）。
   - 手機版選單、登入/註冊入口等
 
 - `db.php`：
-  - MySQL 連線設定
-  - 預設從環境變數讀取：`DB_HOST`、`DB_USER`、`DB_PASS`、`DB_NAME`
-  - 若 `DB_PASS` 未設定，預設為空字串
+  - MySQL 連線設定（`127.0.0.1`、`root`、`root123456`、`group_09`）
+  - 使用 mysqli 函式庫
 
-- `database.sql`：
-  - 完整 schema 初始化（會建立 `group_09` 資料庫並丟棄同名舊 DB）
-  - 主要資料表：
-    - `users`：帳號與角色
-    - `tasks`：任務主表
-    - `submissions`：會員提交紀錄
-    - `member_notices`：會員通知
-  - 內含一組 `admin` 與 `member` 測試帳號，以及一個範例任務
-- `seed_demo_data.sql`：
-  - **在既有 `group_09` 上匯入**（不會 DROP 資料庫）
-  - **保留** `admin`、`member` 帳號與密碼
-  - 清空並重建任務、提交、通知，並加入 8 筆示範任務與多筆審核狀態
+- `group_09.sql`：
+  - phpMyAdmin 匯出的完整資料庫（含 `CREATE DATABASE`、`CREATE TABLE` 與示範資料）
+  - 主要資料表：`users`、`tasks`、`submissions`、`member_notices`
+  - 內含 `admin` / `member` 測試帳號及示範任務、提交、通知
 
 ---
 
@@ -164,29 +157,20 @@ Web3 任務表單整合平台（PHP + MySQL）。
    - PHP 版本需支援 7.3 以上（本機為 7.3.3 測試）
 
 2. **建立資料庫**
-   - 進入 phpMyAdmin 或 MySQL CLI，執行 `database.sql`
-   - 注意：會直接 `DROP DATABASE group_09`，請勿在正式環境直接執行
+   - 進入 phpMyAdmin → **匯入** → 選 `group_09.sql` → 執行
+   - 會建立 `group_09` 資料庫、資料表與示範資料
 
-3. **（選用）匯入示範假資料**
-   - 若首頁任務太少、想測試篩選／名額／審核：在 phpMyAdmin 選 `group_09` → **匯入** → `seed_demo_data.sql`
-   - 可重複執行；會刪除舊任務與提交，但 **不會刪除** `admin`、`member`
-   - 也可用 MySQL CLI：  
-     `"C:\Myspace\Dev_Tools\xampp\mysql\bin\mysql.exe" -u root group_09 < seed_demo_data.sql`
+3. **設定資料庫連線**
+   - 確認 `db.php` 與老師環境一致：
+     - `DB_HOST`：`127.0.0.1`
+     - `DB_USER`：`root`
+     - `DB_PASS`：`root123456`
+     - `DB_NAME`：`group_09`
 
-4. **設定資料庫連線**
-   - 方式一：直接編輯 `db.php`
-     - `DB_HOST`：預設 `127.0.0.1`
-     - `DB_USER`：預設 `root`
-     - `DB_PASS`：若未設定環境變數則預設為空字串（依你的 MySQL 安裝狀況修改）
-     - `DB_NAME`：預設 `group_09`
-   - 方式二：設定環境變數（適合部署環境）
-     - `DB_HOST`、`DB_USER`、`DB_PASS`、`DB_NAME`
-
-5. **啟動伺服器**
-   - 使用 XAMPP Apache：將專案放在 `htdocs` 下，例如：  
-     `C:\Myspace\Dev_Tools\xampp\htdocs\web3-form-aggregator`
+4. **啟動伺服器**
+   - 使用 XAMPP Apache：將專案放在 `htdocs\group_09`
    - 在瀏覽器開啟：  
-     `http://localhost/web3-form-aggregator/index.php`
+     `http://localhost/group_09/index.php`
 
 ---
 
@@ -218,14 +202,14 @@ Web3 任務表單整合平台（PHP + MySQL）。
 
 ## 測試帳號
 
-**核心測試帳號（`database.sql` 與 `seed_demo_data.sql` 皆保留）**
+**核心測試帳號（`group_09.sql` 內含）**
 
 | 帳號 | 密碼 | 角色 |
 |------|------|------|
 | `admin` | `admin123456` | 管理員 |
 | `member` | `member123456` | 會員 |
 
-**匯入 `seed_demo_data.sql` 後額外提供**
+**示範帳號（`group_09.sql` 內含）**
 
 | 帳號 | 密碼 | 角色 | 用途 |
 |------|------|------|------|
