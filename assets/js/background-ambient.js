@@ -198,6 +198,13 @@
     window.addEventListener('resize', onResize, { passive: true });
     window.addEventListener('scroll', onScroll, { passive: true });
     document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener('w3fa-modal-toggle', function (e) {
+        if (e.detail && e.detail.open) {
+            stop();
+        } else if (shouldRun()) {
+            start();
+        }
+    });
 
     var motionMq = window.matchMedia('(prefers-reduced-motion: reduce)');
     if (typeof motionMq.addEventListener === 'function') {

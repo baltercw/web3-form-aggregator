@@ -939,10 +939,10 @@ $shellUser = ['name' => $username, 'role' => $role];
                 <?php endif; ?>
             </section>
 
-            <div id="w3fa-task-modal" class="fixed inset-0 z-[85] hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="w3fa-modal-title">
-                <div id="w3fa-task-modal-backdrop" class="absolute inset-0 bg-black/75 backdrop-blur-md"></div>
-                <div class="pointer-events-none absolute inset-0 flex items-end justify-center p-0 md:items-center md:p-4">
-                    <div id="w3fa-task-modal-panel" class="w3fa-modal-panel pointer-events-auto flex max-h-[min(100dvh,920px)] w-full max-w-2xl flex-col rounded-t-3xl border border-white/15 bg-[#101010] shadow-[0_-20px_60px_rgba(0,0,0,0.85)] md:max-h-[min(92vh,880px)] md:rounded-3xl md:shadow-2xl">
+            <div id="w3fa-task-modal" class="fixed inset-0 z-[85] hidden overflow-hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="w3fa-modal-title">
+                <div id="w3fa-task-modal-backdrop" class="absolute inset-0 bg-black/80" aria-hidden="true"></div>
+                <div class="pointer-events-none absolute inset-0 flex items-center justify-center p-4 md:p-6">
+                    <div id="w3fa-task-modal-panel" class="w3fa-modal-panel pointer-events-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/15 bg-[#101010] shadow-2xl">
                         <div class="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-4 md:px-6">
                             <div class="min-w-0">
                                 <p class="text-xs font-medium uppercase tracking-wider text-amber-300/90">提交審核</p>
@@ -950,7 +950,7 @@ $shellUser = ['name' => $username, 'role' => $role];
                             </div>
                             <button type="button" id="w3fa-task-modal-close" class="shrink-0 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-white/10">關閉</button>
                         </div>
-                        <div id="w3fa-modal-scroll" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-3 md:px-6 md:pb-6 md:pt-4">
+                        <div id="w3fa-modal-scroll" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 pt-3 md:px-6 md:pb-6 md:pt-4">
                             <div class="mb-6 rounded-2xl border border-white/10 bg-white/[0.02] p-4 md:p-5">
                                 <p class="text-xs font-medium uppercase tracking-wider text-amber-300/90">任務介紹</p>
 
@@ -1312,6 +1312,8 @@ $shellUser = ['name' => $username, 'role' => $role];
                 modal.classList.remove('hidden');
                 modal.setAttribute('aria-hidden', 'false');
                 document.body.classList.add('w3fa-modal-open');
+                document.dispatchEvent(new CustomEvent('w3fa-modal-toggle', { detail: { open: true } }));
+                if (modalScroll) modalScroll.scrollTop = 0;
                 trapHandler = function (e) {
                     if (e.key !== 'Tab') return;
                     var list = getModalFocusables();
@@ -1343,6 +1345,7 @@ $shellUser = ['name' => $username, 'role' => $role];
                 modal.classList.add('hidden');
                 modal.setAttribute('aria-hidden', 'true');
                 document.body.classList.remove('w3fa-modal-open');
+                document.dispatchEvent(new CustomEvent('w3fa-modal-toggle', { detail: { open: false } }));
                 openTid = null;
                 if (lastFocusEl && typeof lastFocusEl.focus === 'function') {
                     try { lastFocusEl.focus(); } catch (err) {}
@@ -1386,8 +1389,16 @@ $shellUser = ['name' => $username, 'role' => $role];
             }
             if (location.hash && /^#task-\d+$/.test(location.hash)) {
                 requestAnimationFrame(function () {
-                    var card = document.querySelector(location.hash);
-                    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    var hashMatch = location.hash.match(/^#task-(\d+)$/);
+                    var hashTid = hashMatch && hashMatch[1];
+                    var canOpen = hashTid && TASKS[hashTid] && document.querySelector('.w3fa-open-task-modal[data-task-id="' + hashTid + '"]');
+                    if (canOpen) {
+                        openModal(hashTid);
+                        history.replaceState(null, '', location.pathname + location.search);
+                    } else {
+                        var card = document.querySelector(location.hash);
+                        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
                     var errEl = document.getElementById('member-task-error-alert');
                     if (errEl) errEl.focus();
                 });

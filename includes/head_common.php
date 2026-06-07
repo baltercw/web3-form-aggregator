@@ -9,7 +9,33 @@
         from { opacity: 0; }
         to { opacity: 1; }
     }
-    body.w3fa-modal-open { overflow: hidden; }
+    #w3fa-task-modal:not(.hidden) {
+        pointer-events: auto;
+    }
+    #w3fa-task-modal-backdrop {
+        pointer-events: auto;
+    }
+    #w3fa-task-modal-panel {
+        pointer-events: auto;
+        max-height: 90dvh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    #w3fa-modal-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+    body.w3fa-modal-open .w3fa-bg-blob {
+        animation-play-state: paused !important;
+    }
+    body.w3fa-modal-open .w3fa-bg-canvas-wrap {
+        opacity: 0 !important;
+        transition: opacity 200ms ease-out;
+    }
     .w3fa-modal-panel { animation: w3faModalIn 240ms ease-out both; }
     @keyframes w3faModalIn {
         from { opacity: 0; transform: translateY(12px); }
